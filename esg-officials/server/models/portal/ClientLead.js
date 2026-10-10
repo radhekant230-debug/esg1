@@ -37,11 +37,28 @@ const clientLeadSchema = new Schema(
       type: Date,
       default: Date.now,
     },
+    reportingMonth: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    enquiryCount: {
+      type: Number,
+      default: 1,
+    },
     status: {
       type: String,
       enum: ["New", "Contacted", "Qualified", "Converted", "Lost"],
       default: "New",
       index: true,
+    },
+    isQualified: {
+      type: Boolean,
+      default: false,
+    },
+    isConverted: {
+      type: Boolean,
+      default: false,
     },
     estimatedValue: {
       type: Number,

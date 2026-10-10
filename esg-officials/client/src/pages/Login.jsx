@@ -40,7 +40,7 @@ const Login = () => {
                 } else if (data.role === "manager") {
                     navigate("/manager");
                 } else if (data.role === "client") {
-                    navigate("/dashboard");
+                    navigate("/portal");
                 } else {
                     setError("Invalid user role.");
                 }
@@ -53,7 +53,7 @@ const Login = () => {
                 } else if (data.role === "manager") {
                     navigate("/manager");
                 } else if (data.role === "client") {
-                    navigate("/dashboard");
+                    navigate("/portal");
                 } else {
                     setError("Invalid user role.");
                 }

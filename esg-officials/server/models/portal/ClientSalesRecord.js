@@ -19,6 +19,35 @@ const clientSalesRecordSchema = new Schema(
       enum: ["daily", "weekly", "monthly"],
       default: "daily",
     },
+    reportingMonth: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    grossSales: {
+      type: Number,
+      default: 0,
+    },
+    discounts: {
+      type: Number,
+      default: 0,
+    },
+    refunds: {
+      type: Number,
+      default: 0,
+    },
+    netRevenue: {
+      type: Number,
+      default: 0,
+    },
+    costOfGoodsSold: {
+      type: Number,
+      default: 0,
+    },
+    salesChannel: {
+      type: String,
+      default: "In-Store / Direct",
+    },
     totalRevenue: {
       type: Number,
       required: true,
@@ -43,6 +72,15 @@ const clientSalesRecordSchema = new Schema(
     adAttributedRevenue: {
       type: Number,
       default: 0,
+    },
+    verificationStatus: {
+      type: String,
+      enum: ["Verified", "Pending Review", "Estimated", "verified", "pending", "Pending", "estimated"],
+      default: "Verified",
+    },
+    dataSource: {
+      type: String,
+      default: "Manual Entry",
     },
     categoryBreakdown: [
       {
@@ -121,10 +159,21 @@ const clientSalesRecordSchema = new Schema(
   }
 );
 
-// Auto compute average order value if missing
+// Auto compute revenue and average order value if missing
 clientSalesRecordSchema.pre("save", function () {
+  if (this.grossSales > 0 && !this.netRevenue) {
+    this.netRevenue = Math.max(0, this.grossSales - (this.discounts || 0) - (this.refunds || 0));
+  }
+  if (this.netRevenue > 0 && !this.totalRevenue) {
+    this.totalRevenue = this.netRevenue;
+  } else if (this.totalRevenue > 0 && !this.netRevenue) {
+    this.netRevenue = this.totalRevenue;
+  }
+  if (!this.grossSales && this.totalRevenue > 0) {
+    this.grossSales = this.totalRevenue + (this.discounts || 0) + (this.refunds || 0);
+  }
   if (this.ordersCount > 0 && !this.averageOrderValue) {
-    this.averageOrderValue = Math.round(this.totalRevenue / this.ordersCount);
+    this.averageOrderValue = Math.round((this.totalRevenue || this.grossSales || 0) / this.ordersCount);
   }
 });
 

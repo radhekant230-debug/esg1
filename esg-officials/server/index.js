@@ -34,6 +34,7 @@ const activityRoutes = require("./routes/activity");
 const contactRoutes = require("./routes/contact");
 const bizRoutes = require("./routes/biz/index");
 const portalRoutes = require("./routes/portal");
+const adminRoutes = require("./routes/admin");
 
 const app = express();
 
@@ -85,6 +86,7 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/biz/businesses", bizRoutes);
 app.use("/api/portal", portalRoutes);
+app.use("/api/admin", adminRoutes);
 
 // ==========================================
 // 404 HANDLER

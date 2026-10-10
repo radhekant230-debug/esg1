@@ -16,7 +16,7 @@ const clientProfileSchema = new Schema(
     },
     businessType: {
       type: String,
-      enum: ["cafe_restaurant", "cafe", "restaurant", "clothing_fashion", "clothing", "jewellery", "retail_service", "other"],
+      enum: ["cafe_restaurant", "cafe", "restaurant", "clothing_fashion", "clothing", "jewellery", "retail", "retail_service", "other"],
       default: "other",
     },
     contactPersonName: {

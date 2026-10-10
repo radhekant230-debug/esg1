@@ -154,7 +154,10 @@ const Clients = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+    if (searchParams.get("action") === "add") {
+      setShowAddModal(true);
+    }
+  }, [searchParams]);
 
   // ==========================================
   // FILTERING LOGIC
@@ -715,9 +718,13 @@ const Clients = () => {
                               )}
                             </div>
                             <div>
-                              <p className="font-bold text-[#1A1918] flex items-center gap-1.5">
+                              <button
+                                onClick={() => navigate(`/admin/clients/${client._id}`)}
+                                className="font-bold text-[#1A1918] hover:text-[#C5A880] transition text-left flex items-center gap-1.5 cursor-pointer"
+                                title="Open Admin Performance Dossier"
+                              >
                                 {client.companyName || client.name}
-                              </p>
+                              </button>
                               <div className="flex items-center gap-2 text-xs text-stone-500 mt-0.5">
                                 <span>{client.name}</span>
                                 <span>•</span>
@@ -802,10 +809,10 @@ const Clients = () => {
                               <FaEye />
                             </button>
 
-                            {/* Open Portal */}
+                            {/* Open Admin Performance Detail */}
                             <button
-                              onClick={() => navigate(`/dashboard?clientId=${client._id}`)}
-                              title="Open Client Portal Dashboard"
+                              onClick={() => navigate(`/admin/clients/${client._id}`)}
+                              title="Open Client Admin Performance Dossier"
                               className="w-8 h-8 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 flex items-center justify-center text-xs border border-amber-200 transition"
                             >
                               <FaExternalLinkAlt />

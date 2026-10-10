@@ -16,18 +16,32 @@ const campaignMetricSchema = new Schema(
     },
     platform: {
       type: String,
-      enum: ["Meta Ads", "Google Ads", "Other"],
+      enum: ["Meta Ads", "Google Ads", "Other", "Meta", "Google", "meta", "google", "other"],
       default: "Meta Ads",
     },
     status: {
       type: String,
-      enum: ["Active", "Paused", "Completed"],
+      enum: ["Active", "Paused", "Completed", "active", "paused", "completed"],
       default: "Active",
     },
     objective: {
       type: String,
       trim: true,
       default: "Lead Generation",
+    },
+    reportingMonth: {
+      type: String,
+      trim: true,
+      index: true,
+    },
+    supportingEvidence: {
+      type: String,
+      default: "",
+    },
+    verificationStatus: {
+      type: String,
+      enum: ["Verified", "Pending Review", "Estimated", "verified", "pending", "Pending", "estimated"],
+      default: "Verified",
     },
     startDate: {
       type: Date,
