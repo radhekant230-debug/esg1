@@ -12,6 +12,7 @@ import {
     FaBell,
     FaArrowRight,
     FaPlus,
+    FaTachometerAlt,
 } from "react-icons/fa";
 
 const AdminDashboard = () => {
@@ -132,30 +133,79 @@ const AdminDashboard = () => {
                 HEADER
             ========================================== */}
 
-            <div className="bg-black text-white rounded-2xl p-6 sm:p-8 mb-8 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="bg-stone-900 text-white rounded-2xl p-6 sm:p-8 mb-8 border border-stone-800 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
 
                 <div>
-                    <p className="text-gray-400 text-sm font-semibold mb-2">
-                        ADMIN CONTROL PANEL
-                    </p>
+                    <div className="flex items-center gap-2.5 mb-2">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-widest uppercase bg-amber-400/20 text-amber-300 border border-amber-400/60 font-mono shadow-[0_0_10px_rgba(245,158,11,0.25)]">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                            ADMIN
+                        </span>
+                        <span className="text-stone-400 text-xs font-mono tracking-widest uppercase font-semibold">
+                            EXECUTIVE CONTROL PANEL
+                        </span>
+                    </div>
 
-                    <h1 className="text-2xl sm:text-3xl font-extrabold mb-2">
-                        Welcome, {user?.name}
+                    <h1 className="text-3xl sm:text-4xl font-serif font-bold text-white mb-2 tracking-tight">
+                        Admin Dashboard
                     </h1>
 
-                    <p className="text-gray-300">
-                        Manage clients, projects, managers and
-                        the entire workflow from one place.
+                    <p className="text-stone-300 text-sm max-w-xl">
+                        Welcome back, <span className="font-semibold text-white">{user?.name}</span>. Manage clients, onboard new accounts, assign account managers, and monitor agency performance from your central administration hub.
                     </p>
+
+                    {/* Admin-only Navigation Section */}
+                    <div className="flex flex-wrap items-center gap-2.5 mt-5 pt-4 border-t border-stone-800">
+                        <span className="text-[11px] font-mono uppercase text-amber-400/90 font-bold tracking-wider mr-1">
+                            Admin Controls:
+                        </span>
+                        <button
+                            onClick={() => navigate("/clients")}
+                            className="px-3.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-xs font-semibold border border-stone-700 transition flex items-center gap-1.5"
+                        >
+                            <FaUsers className="text-amber-400" />
+                            Client Management
+                        </button>
+                        <button
+                            onClick={() => navigate("/clients?action=add")}
+                            className="px-3.5 py-1.5 rounded-lg bg-[#C5A880] hover:bg-[#B39369] text-stone-900 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                        >
+                            <FaPlus />
+                            + Add New Client
+                        </button>
+                        <button
+                            onClick={() => navigate("/managers")}
+                            className="px-3.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-xs font-semibold border border-stone-700 transition flex items-center gap-1.5"
+                        >
+                            <FaUserTie className="text-stone-400" />
+                            Manage Managers
+                        </button>
+                        <button
+                            onClick={() => navigate("/dashboard")}
+                            className="px-3.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-xs font-semibold border border-stone-700 transition flex items-center gap-1.5"
+                        >
+                            <FaTachometerAlt className="text-amber-400" />
+                            Client Portals
+                        </button>
+                    </div>
                 </div>
 
-                <button
-                    onClick={() => navigate("/projects/create")}
-                    className="w-full md:w-auto bg-white text-black font-bold py-3 px-6 rounded-lg hover:bg-gray-100 transition shadow-md flex items-center justify-center gap-2"
-                >
-                    <FaPlus />
-                    Create Project
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto shrink-0">
+                    <button
+                        onClick={() => navigate("/clients?action=add")}
+                        className="bg-[#C5A880] hover:bg-[#B39369] text-stone-900 font-bold py-3 px-5 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm"
+                    >
+                        <FaPlus />
+                        Add New Client
+                    </button>
+                    <button
+                        onClick={() => navigate("/projects/create")}
+                        className="bg-stone-800 hover:bg-stone-700 text-white font-bold py-3 px-5 rounded-xl transition border border-stone-700 shadow-md flex items-center justify-center gap-2 text-sm"
+                    >
+                        <FaPlus />
+                        Create Project
+                    </button>
+                </div>
             </div>
 
             {/* ==========================================

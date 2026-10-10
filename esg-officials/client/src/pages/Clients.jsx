@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import api from "../utils/axios";
 import {
@@ -80,6 +80,7 @@ const getBusinessTypeBadge = (type) => {
 const Clients = () => {
   const { user, isAdmin } = useContext(AuthContext);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [clients, setClients] = useState([]);
   const [managers, setManagers] = useState([]);
@@ -235,6 +236,12 @@ const Clients = () => {
     });
     setShowAddModal(true);
   };
+
+  useEffect(() => {
+    if (searchParams.get("action") === "add" && isAdmin) {
+      handleOpenAddModal();
+    }
+  }, [searchParams, isAdmin]);
 
   // ==========================================
   // SUBMIT NEW CLIENT
@@ -457,10 +464,11 @@ const Clients = () => {
         <div className="bg-[#1A1918] text-[#F5F0E8] rounded-2xl p-6 sm:p-8 border border-[#33312E] shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-[11px] font-mono tracking-widest uppercase text-[#C5A880] px-2.5 py-0.5 rounded bg-[#C5A880]/10 border border-[#C5A880]/20">
-                ESG Officials Admin
+              <span className="inline-flex items-center gap-1 text-[11px] font-mono tracking-widest uppercase text-[#C5A880] px-2.5 py-0.5 rounded bg-[#C5A880]/15 border border-[#C5A880]/30 font-black shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#C5A880] animate-pulse" />
+                ADMIN
               </span>
-              <span className="text-xs text-stone-400 font-medium">Enterprise Management</span>
+              <span className="text-xs text-stone-400 font-medium font-mono uppercase tracking-wider">Enterprise Management</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-serif font-bold text-white tracking-tight">
               Client Management
@@ -478,14 +486,16 @@ const Clients = () => {
             >
               <FaSyncAlt className={loading ? "animate-spin" : ""} />
             </button>
-            <button
-              id="btn-add-client"
-              onClick={handleOpenAddModal}
-              className="px-5 py-3 rounded-xl bg-[#C5A880] hover:bg-[#B39369] text-[#1A1918] font-semibold text-sm shadow-md transition flex items-center gap-2 tracking-wide font-medium"
-            >
-              <FaPlus />
-              Add New Client
-            </button>
+            {isAdmin && (
+              <button
+                id="btn-add-client"
+                onClick={handleOpenAddModal}
+                className="px-5 py-3 rounded-xl bg-[#C5A880] hover:bg-[#B39369] text-[#1A1918] font-bold text-sm shadow-md transition flex items-center gap-2 tracking-wide font-medium"
+              >
+                <FaPlus />
+                Add New Client
+              </button>
+            )}
           </div>
         </div>
 
@@ -801,49 +811,54 @@ const Clients = () => {
                               <FaExternalLinkAlt />
                             </button>
 
-                            {/* Edit Client */}
-                            <button
-                              onClick={() => handleOpenEditModal(client)}
-                              title="Edit Client Information"
-                              className="w-8 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center text-xs transition"
-                            >
-                              <FaEdit />
-                            </button>
+                            {/* Admin-only mutations */}
+                            {isAdmin && (
+                              <>
+                                {/* Edit Client */}
+                                <button
+                                  onClick={() => handleOpenEditModal(client)}
+                                  title="Edit Client Information"
+                                  className="w-8 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center text-xs transition"
+                                >
+                                  <FaEdit />
+                                </button>
 
-                            {/* Reset Password */}
-                            <button
-                              onClick={() => {
-                                setSelectedClient(client);
-                                setNewPasswordValue("");
-                                setShowPasswordModal(true);
-                              }}
-                              title="Reset Password"
-                              className="w-8 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center text-xs transition"
-                            >
-                              <FaKey />
-                            </button>
+                                {/* Reset Password */}
+                                <button
+                                  onClick={() => {
+                                    setSelectedClient(client);
+                                    setNewPasswordValue("");
+                                    setShowPasswordModal(true);
+                                  }}
+                                  title="Reset Password"
+                                  className="w-8 h-8 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 flex items-center justify-center text-xs transition"
+                                >
+                                  <FaKey />
+                                </button>
 
-                            {/* Toggle Status */}
-                            <button
-                              onClick={() => handleToggleStatus(client)}
-                              title={client.isActive ? "Deactivate Client" : "Activate Client"}
-                              className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs transition ${
-                                client.isActive
-                                  ? "bg-stone-100 text-stone-700 hover:bg-amber-50 hover:text-amber-800"
-                                  : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                              }`}
-                            >
-                              <FaPowerOff />
-                            </button>
+                                {/* Toggle Status */}
+                                <button
+                                  onClick={() => handleToggleStatus(client)}
+                                  title={client.isActive ? "Deactivate Client" : "Activate Client"}
+                                  className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs transition ${
+                                    client.isActive
+                                      ? "bg-stone-100 text-stone-700 hover:bg-amber-50 hover:text-amber-800"
+                                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                  }`}
+                                >
+                                  <FaPowerOff />
+                                </button>
 
-                            {/* Delete Client */}
-                            <button
-                              onClick={() => handleDeleteClient(client)}
-                              title="Delete Client Permanently"
-                              className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center text-xs transition"
-                            >
-                              <FaTrash />
-                            </button>
+                                {/* Delete Client */}
+                                <button
+                                  onClick={() => handleDeleteClient(client)}
+                                  title="Delete Client Permanently"
+                                  className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 flex items-center justify-center text-xs transition"
+                                >
+                                  <FaTrash />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
