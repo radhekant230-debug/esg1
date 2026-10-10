@@ -1,6 +1,6 @@
-import React, { useState, useContext } from "react";
+import React, { useState, useContext, useEffect } from "react";
 import { AuthContext } from "../context/AuthContext";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 
 const Login = () => {
     const [email, setEmail] = useState("");
@@ -15,6 +15,14 @@ const Login = () => {
 
     const { login, verifyOTP } = useContext(AuthContext);
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+
+    useEffect(() => {
+        if (searchParams.get("role") === "admin") {
+            setEmail("admin@esgofficial.com");
+            setPassword("password123");
+        }
+    }, [searchParams]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -78,14 +86,56 @@ const Login = () => {
             </div>
 
             {/* Header */}
-            <div className="text-center mb-8">
+            <div className="text-center mb-6">
                 <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
-                    Welcome Back
+                    ESG Portal Login
                 </h2>
 
-                <p className="text-gray-500">
-                    Sign in to your Client Portal account
+                <p className="text-gray-500 text-sm">
+                    Sign in to access your Admin, Manager, or Client Dashboard
                 </p>
+            </div>
+
+            {/* Quick Demo Access Buttons */}
+            <div className="mb-6 p-3 bg-stone-50 border border-stone-200 rounded-lg">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-stone-500 font-bold mb-2 text-center">
+                    Quick Role Access (Click to Fill):
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setEmail("admin@esgofficial.com");
+                            setPassword("password123");
+                        }}
+                        className="px-2 py-1.5 rounded text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-800 hover:bg-amber-500/25 transition text-center shadow-xs"
+                        title="Fill Administrator Credentials (admin@esgofficial.com)"
+                    >
+                        ★ Admin
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setEmail("rahul.manager@esgofficial.com");
+                            setPassword("password123");
+                        }}
+                        className="px-2 py-1.5 rounded text-xs font-bold bg-purple-500/15 border border-purple-500/40 text-purple-800 hover:bg-purple-500/25 transition text-center shadow-xs"
+                        title="Fill Manager Credentials (rahul.manager@esgofficial.com)"
+                    >
+                        Manager
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setEmail("cafemysa@client.com");
+                            setPassword("password123");
+                        }}
+                        className="px-2 py-1.5 rounded text-xs font-bold bg-emerald-500/15 border border-emerald-500/40 text-emerald-800 hover:bg-emerald-500/25 transition text-center shadow-xs"
+                        title="Fill Client Credentials (Café Mysa)"
+                    >
+                        Client
+                    </button>
+                </div>
             </div>
 
             {/* Error */}

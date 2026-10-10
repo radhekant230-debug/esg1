@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { AuthContext } from "../../context/AuthContext";
 
 const PublicHeader = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const { user, isAdmin, isManager, isClient } = useContext(AuthContext);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -99,9 +101,29 @@ const PublicHeader = () => {
         </ul>
 
         <div className="nav-cta">
-          <Link to="/login" className="nav-login">
-            Client Login
-          </Link>
+          {user ? (
+            <Link
+              to={isAdmin ? "/admin" : isManager ? "/manager" : "/dashboard"}
+              className="nav-login"
+              style={isAdmin ? { color: "#8B6E3F", fontWeight: 700 } : {}}
+              title={isAdmin ? "Open ESG Admin Dashboard" : "Open Your Portal"}
+            >
+              {isAdmin ? "Admin Portal" : isManager ? "Manager Portal" : "Client Portal"}
+            </Link>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Link to="/login" className="nav-login" title="Client Portal Sign In">
+                Client Login
+              </Link>
+              <Link
+                to="/login?role=admin"
+                className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider font-bold border border-[#C5A880]/60 text-[#8B6E3F] hover:bg-[#C5A880]/15 hover:border-[#8B6E3F] transition shadow-xs"
+                title="ESG Admin Portal Login"
+              >
+                Admin
+              </Link>
+            </div>
+          )}
           <button
             className={`nav-toggle ${menuOpen ? "is-active" : ""}`}
             aria-label="Toggle menu"

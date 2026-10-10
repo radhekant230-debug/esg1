@@ -23,6 +23,8 @@ const PublicFooter = () => {
               <li><Link to="/services">Services</Link></li>
               <li><Link to="/industries">Industries</Link></li>
               <li><Link to="/research">Research &amp; Insights</Link></li>
+              <li><Link to="/admin">Admin Portal</Link></li>
+              <li><Link to="/login">Client Portal Login</Link></li>
             </ul>
           </div>
           <div>
