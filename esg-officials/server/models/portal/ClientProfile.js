@@ -16,8 +16,25 @@ const clientProfileSchema = new Schema(
     },
     businessType: {
       type: String,
-      enum: ["cafe_restaurant", "clothing_fashion", "jewellery", "retail_service", "other"],
+      enum: ["cafe_restaurant", "cafe", "restaurant", "clothing_fashion", "clothing", "jewellery", "retail_service", "other"],
       default: "other",
+    },
+    contactPersonName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    serviceStartDate: {
+      type: Date,
+      default: Date.now,
+    },
+    reportingPeriod: {
+      type: String,
+      default: "Monthly",
+    },
+    retainerAmount: {
+      type: Number,
+      default: 0,
     },
     logo: {
       type: String,

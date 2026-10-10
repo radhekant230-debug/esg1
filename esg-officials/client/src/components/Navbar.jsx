@@ -63,6 +63,16 @@ const Navbar = () => {
                                     Dashboard
                                 </Link>
 
+                                {isAdmin && (
+                                    <Link
+                                        to="/clients"
+                                        className="text-stone-200 hover:text-white transition flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-stone-800 border border-stone-700 shadow-sm"
+                                        title="Manage Agency Clients & Accounts"
+                                    >
+                                        Client Management
+                                    </Link>
+                                )}
+
                                 {(isAdmin || isManager) && (
                                     <Link
                                         to="/dashboard"
