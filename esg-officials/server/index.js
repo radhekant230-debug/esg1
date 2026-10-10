@@ -33,6 +33,7 @@ const documentRoutes = require("./routes/document");
 const activityRoutes = require("./routes/activity");
 const contactRoutes = require("./routes/contact");
 const bizRoutes = require("./routes/biz/index");
+const portalRoutes = require("./routes/portal");
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use("/api/documents", documentRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/biz/businesses", bizRoutes);
+app.use("/api/portal", portalRoutes);
 
 // ==========================================
 // 404 HANDLER

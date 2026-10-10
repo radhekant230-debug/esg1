@@ -259,7 +259,17 @@ const App = () => {
                 <Route
                     path="/dashboard"
                     element={
-                        <RoleRoute allowedRoles={["client"]}>
+                        <RoleRoute allowedRoles={["client", "admin", "manager"]}>
+                            <PortalLayout>
+                                <ClientDashboard />
+                            </PortalLayout>
+                        </RoleRoute>
+                    }
+                />
+                <Route
+                    path="/client-portal"
+                    element={
+                        <RoleRoute allowedRoles={["client", "admin", "manager"]}>
                             <PortalLayout>
                                 <ClientDashboard />
                             </PortalLayout>

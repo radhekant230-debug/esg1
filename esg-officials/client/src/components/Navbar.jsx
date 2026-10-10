@@ -63,6 +63,16 @@ const Navbar = () => {
                                     Dashboard
                                 </Link>
 
+                                {(isAdmin || isManager) && (
+                                    <Link
+                                        to="/dashboard"
+                                        className="text-amber-400 hover:text-amber-300 transition flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-amber-950/40 border border-amber-800/50"
+                                        title="View Client Marketing & Performance Portals"
+                                    >
+                                        Client Portals
+                                    </Link>
+                                )}
+
                                 {/* User Information */}
                                 <div className="flex items-center gap-2 text-gray-200">
                                     <FaUserCircle className="text-lg" />
