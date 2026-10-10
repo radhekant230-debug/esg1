@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESG ClientOS — Café Mysa</title>
+<meta name="description" content="ESG ClientOS — your engagement command center.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<link rel="stylesheet" href="assets/css/styles.css">
+<link rel="stylesheet" href="assets/css/portal.css">
+</head>
+<body class="portal-body">
+
+<header class="ptopbar">
+  <div class="ptopbar-left">
+    <button class="icon-btn psidebar-toggle" onclick="Portal.toggleSidebar()" aria-label="Toggle menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 7H20M4 12H20M4 17H20"/></svg>
+    </button>
+    <a href="index.html" class="brand"><svg class="logomark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="1" fill="none" stroke-width="1.2"/><path d="M12 4 L12 20 M4 12 L20 12" stroke-width="0.9"/><circle cx="12" cy="12" r="3.2" fill="none" stroke-width="1.2"/></svg>ESG <span>OFFICIALS</span></a>
+    <span class="ptopbar-divider"></span>
+    <div class="ptopbar-client">ClientOS · <strong id="topbar-client">—</strong><br><span id="topbar-engagement" style="font-size:0.9em;">—</span></div>
+  </div>
+  <div class="ptopbar-right" style="position:relative;">
+    <div class="health-badge" id="health-badge"></div>
+
+    <button class="icon-btn" id="notif-btn" onclick="Portal.toggleDropdown('notif')" aria-label="Notifications"></button>
+    <div class="pdropdown" id="dd-notif"></div>
+
+    <div class="profile-chip" id="profile-chip" onclick="Portal.toggleDropdown('profile')"></div>
+    <div class="pdropdown" id="dd-profile"></div>
+  </div>
+</header>
+
+<div class="pshell">
+  <nav class="psidebar" id="psidebar">
+    <div id="sidebar-nav"></div>
+  </nav>
+  <main class="pmain" id="pmain">
+    <div id="view-root"></div>
+  </main>
+</div>
+
+<script src="assets/js/portal-data.js"></script>
+<script src="assets/js/portal-views.js"></script>
+<script src="assets/js/portal.js"></script>
+</body>
+</html>

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Client Login — ESG ClientOS</title>
+<meta name="description" content="Sign in to ESG ClientOS, the secure client operating system for your ESG Officials engagement.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<link rel="stylesheet" href="assets/css/styles.css">
+<style>
+  body{ min-height:100vh; display:flex; flex-direction:column; }
+  .login-wrap{
+    flex:1; display:grid; grid-template-columns:1fr 1fr; min-height:calc(100vh - 68px);
+  }
+  .login-side{
+    background:var(--ink); color:var(--paper); padding:clamp(2.5rem,5vw,5rem);
+    display:flex; flex-direction:column; justify-content:space-between;
+    position:relative; overflow:hidden;
+  }
+  .login-side .motif{ position:absolute; right:-60px; bottom:-60px; width:320px; height:320px; opacity:0.5; }
+  .login-side .eyebrow{ color:#C7A96A; }
+  .login-side h1{ color:var(--paper); max-width:14ch; }
+  .login-quote{ font-family:var(--font-display); font-style:italic; font-size:1.3rem; line-height:1.5; max-width:32ch; color:var(--ash-light); }
+  .login-panel{ display:flex; align-items:center; justify-content:center; padding:clamp(2rem,5vw,4rem); }
+  .login-card{ width:100%; max-width:400px; }
+  .login-card h2{ margin-bottom:0.3em; }
+  .demo-note{
+    background:var(--paper-raised); border:1px solid var(--line); border-radius:var(--radius);
+    padding:0.9rem 1.1rem; font-family:var(--font-mono); font-size:0.78rem; color:var(--ash);
+    margin-bottom:1.8rem; line-height:1.6;
+  }
+  .demo-note strong{ color:var(--brass-deep); }
+  .field-error{ font-family:var(--font-mono); font-size:0.76rem; color:#a13d2f; min-height:1.2em; margin-top:-0.8rem; margin-bottom:0.8rem; }
+  .login-foot{ margin-top:1.6rem; font-size:0.85rem; color:var(--ash); }
+  .login-foot a{ border-bottom:1px solid var(--brass); color:var(--ink); }
+  @media (max-width:860px){
+    .login-wrap{ grid-template-columns:1fr; }
+    .login-side{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <nav class="nav">
+    <a href="index.html" class="brand"><svg class="logomark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="1" fill="none" stroke-width="1.2"/><path d="M12 4 L12 20 M4 12 L20 12" stroke-width="0.9"/><circle cx="12" cy="12" r="3.2" fill="none" stroke-width="1.2"/></svg>ESG <span>OFFICIALS</span></a>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="services.html">Services</a></li>
+      <li><a href="industries.html">Industries</a></li>
+      <li><a href="case-studies.html">Case Studies</a></li>
+      <li><a href="research.html">Research</a></li>
+      <li><a href="contact.html">Contact</a></li>
+    </ul>
+    <div class="nav-cta">
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><span></span></button>
+      <a href="contact.html" class="btn btn--solid"><span class="btn-label-long">Book a </span>Consultation</a>
+    </div>
+  </nav>
+</header>
+
+<div class="login-wrap">
+  <div class="login-side">
+    <div class="motif" aria-hidden="true">
+      <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="100" cy="100" r="88" fill="none" stroke="#3A4249" stroke-width="1"/>
+        <circle cx="100" cy="100" r="62" fill="none" stroke="#3A4249" stroke-width="1"/>
+        <circle cx="100" cy="100" r="36" fill="none" stroke="#9C7A42" stroke-width="1.3"/>
+        <circle cx="100" cy="100" r="3" fill="#9C7A42"/>
+      </svg>
+    </div>
+    <div>
+      <p class="eyebrow">ESG ClientOS</p>
+      <h1>Your entire engagement, in one place.</h1>
+    </div>
+    <div>
+      <p class="login-quote">"I know exactly where my business stands. I know what I need to approve. I know what happens next."</p>
+    </div>
+  </div>
+
+  <div class="login-panel">
+    <div class="login-card">
+      <p class="eyebrow">Client Sign In</p>
+      <h2>Welcome back.</h2>
+      <p class="text-ash" style="margin-bottom:1.6rem;">Sign in securely to view your engagement, approve work, and track performance.</p>
+
+      <div class="demo-note">
+        <strong>Secure portal —</strong> your credentials are entered only in the ESG Officials Client Portal.
+      </div>
+
+      <a id="portal-login-link" class="btn btn--solid" style="width:100%; justify-content:center;" href="http://localhost:5173/login">Sign In</a>
+
+      <p class="login-foot">Forgot your password? Contact your portal administrator.<br>Not a client yet? <a href="contact.html">Book a consultation</a> to get started.</p>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/main.js"></script>
+<script>
+  document.getElementById('portal-login-link').href =
+    window.ESG_PORTAL_URL || 'http://localhost:5173/login';
+</script>
+</body>
+</html>

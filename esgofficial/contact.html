@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contact — ESG Officials</title>
+<meta name="description" content="Book a consultation with ESG Officials. Tell us about your business and we'll follow up to discuss whether we're the right fit.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/styles.css">
+<link rel="icon" type="image/svg+xml" href="assets/img/favicon.svg">
+<style>
+  .contact-grid{ display:grid; grid-template-columns:1fr 1fr; gap:4.5rem; }
+  @media (max-width:900px){ .contact-grid{ grid-template-columns:1fr; gap:3rem; } }
+  .contact-info-item{ padding:1.4rem 0; border-bottom:1px solid var(--line); }
+  .contact-info-item h4{ font-family:var(--font-mono); font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; color:var(--ash); margin-bottom:0.5em; }
+  .form-status{ font-family:var(--font-mono); font-size:0.85rem; color:var(--brass-deep); min-height:1.4em; margin-top:0.5rem; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <nav class="nav">
+    <a href="index.html" class="brand"><svg class="logomark" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="1" fill="none" stroke-width="1.2"/><path d="M12 4 L12 20 M4 12 L20 12" stroke-width="0.9"/><circle cx="12" cy="12" r="3.2" fill="none" stroke-width="1.2"/></svg>ESG <span>OFFICIALS</span></a>
+    <ul class="nav-links">
+      <li><a href="index.html">Home</a></li>
+      <li><a href="about.html">About</a></li>
+      <li><a href="services.html">Services</a></li>
+      <li><a href="industries.html">Industries</a></li>
+      <li><a href="case-studies.html">Case Studies</a></li>
+      <li><a href="research.html">Research</a></li>
+      <li><a href="contact.html" aria-current="page">Contact</a></li>
+    </ul>
+    <div class="nav-cta">
+      <a href="login.html" class="nav-login">Client Login</a>
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false"><span></span></button>
+      <a href="contact.html" class="btn btn--solid"><span class="btn-label-long">Book a </span>Consultation</a>
+    </div>
+  </nav>
+</header>
+
+<main>
+
+  <section class="page-head container">
+    <p class="breadcrumb"><a href="index.html">Home</a> / Contact</p>
+    <p class="eyebrow">Get In Touch</p>
+    <h1>Let's start with understanding your business.</h1>
+    <p class="lede">Tell us where things stand today. We'll follow up to discuss whether — and how — we're the right partner.</p>
+  </section>
+
+  <section class="section section--border-top">
+    <div class="container contact-grid">
+
+      <div>
+        <form id="consultation-form">
+          <div class="form-row">
+            <div class="field">
+              <label for="name">Full name</label>
+              <input type="text" id="name" name="name" required>
+            </div>
+            <div class="field">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="company">Business name</label>
+              <input type="text" id="company" name="company">
+            </div>
+            <div class="field">
+              <label for="industry">Industry</label>
+              <select id="industry" name="industry">
+                <option>Hospitality</option>
+                <option>Fashion / Consumer Brands</option>
+                <option>D2C / Retail</option>
+                <option>Personal Brand</option>
+                <option>Healthcare / Education / Professional Services</option>
+                <option>Other</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="message">What are you looking to solve?</label>
+            <textarea id="message" name="message" placeholder="A little context on the business and the problem you're facing." required></textarea>
+          </div>
+          <button type="submit" class="btn btn--solid">Send Enquiry</button>
+          <p class="form-status" role="status"></p>
+        </form>
+      </div>
+
+      <div>
+        <div class="contact-info-item icon-row">
+          <div class="icon icon--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 6.5L12 13L21 6.5"/></svg></div>
+          <div>
+            <h4>Email</h4>
+            <p class="mb-0"><a href="mailto:hello@esgofficials.com" style="border-bottom:1px solid var(--brass);">hello@esgofficials.com</a></p>
+          </div>
+        </div>
+        <div class="contact-info-item icon-row">
+          <div class="icon icon--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21S5 14.5 5 10A7 7 0 0 1 19 10C19 14.5 12 21 12 21Z"/><circle cx="12" cy="10" r="2.4"/></svg></div>
+          <div>
+            <h4>Where We Work</h4>
+            <p class="mb-0">Remote-first, with engagements across India and internationally. Consultations are by appointment.</p>
+          </div>
+        </div>
+        <div class="contact-info-item icon-row">
+          <div class="icon icon--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12H20M14 6L20 12L14 18"/></svg></div>
+          <div>
+            <h4>What Happens Next</h4>
+            <p class="mb-0">A short call to understand your business, followed by a proposed starting point — usually ESG Discovery™.</p>
+          </div>
+        </div>
+        <div class="contact-info-item icon-row" style="border-bottom:none;">
+          <div class="icon icon--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7V12L15.5 14"/></svg></div>
+          <div>
+            <h4>Response Time</h4>
+            <p class="mb-0">We reply to every enquiry personally, typically within two business days.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section section--raised section--border-top">
+    <div class="container">
+      <div class="section-head">
+        <p class="eyebrow">Questions Answered</p>
+        <h2>Before you reach out.</h2>
+      </div>
+      <div class="faq-list" style="max-width:70ch;">
+        <div class="faq-item">
+          <button class="faq-q"><span>What's the difference between ESG Officials and a marketing agency?</span><span class="plus">+</span></button>
+          <div class="faq-a"><p>Agencies typically begin with execution — ads, content, campaigns. We begin with research and strategy, and treat marketing as the layer that amplifies a strategy already in place, not a substitute for one.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q"><span>Do you handle execution, like social media or ad campaigns?</span><span class="plus">+</span></button>
+          <div class="faq-a"><p>No. We design the strategy — positioning, experience, growth systems — and your team or a vetted execution partner carries it out. We're glad to help you brief that partner clearly.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q"><span>Do you only work with hospitality businesses?</span><span class="plus">+</span></button>
+          <div class="faq-a"><p>Hospitality is our flagship capability, but our consulting approach adapts across fashion, consumer brands, D2C, retail, personal brands, and a growing set of other industries.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q"><span>What does an engagement typically involve?</span><span class="plus">+</span></button>
+          <div class="faq-a"><p>Most engagements begin with ESG Discovery™, our research phase, before moving into the relevant frameworks in our Consulting Operating System — from Brand DNA™ through to Performance Loop™.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q"><span>Do you work with early-stage founders, or only established businesses?</span><span class="plus">+</span></button>
+          <div class="faq-a"><p>We work best with founders and leadership teams who are growth-oriented, open to strategic change, and willing to invest in transformation — regardless of company size.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q"><span>How do we get started?</span><span class="plus">+</span></button>
+          <div class="faq-a"><p>Send us a note using the form above. We'll set up a short call to understand your business and recommend a starting point.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <h4>ESG Officials</h4>
+        <p>A strategy and research-led consulting firm helping ambitious founders build category-leading brands. Research precedes recommendation. Strategy precedes execution.</p>
+      </div>
+      <div>
+        <h4>Firm</h4>
+        <ul class="footer-links">
+          <li><a href="about.html">About</a></li>
+          <li><a href="services.html">Services</a></li>
+          <li><a href="industries.html">Industries</a></li>
+          <li><a href="research.html">Research &amp; Insights</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Work</h4>
+        <ul class="footer-links">
+          <li><a href="case-studies.html">Case Studies</a></li>
+          <li><a href="case-studies.html#cafe-mysa">Café Mysa</a></li>
+          <li><a href="case-studies.html#dishai">Dishai</a></li>
+          <li><a href="case-studies.html#biaana">Biaana</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Connect</h4>
+        <ul class="footer-links">
+          <li><a href="contact.html">Book a Consultation</a></li>
+          <li><a href="mailto:hello@esgofficials.com">hello@esgofficials.com</a></li>
+          <li>esgofficials.com</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© <span data-year></span> ESG Officials. All rights reserved.</span>
+      <span>Brand Strategy &amp; Growth Consulting</span>
+    </div>
+  </div>
+</footer>
+
+<script src="assets/js/main.js"></script>
+</body>
+</html>
