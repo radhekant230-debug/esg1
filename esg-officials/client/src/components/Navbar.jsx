@@ -23,7 +23,7 @@ const Navbar = () => {
         if (isManager) return "/manager";
         if (isClient) return "/dashboard";
 
-        return "/";
+        return "/login";
     };
 
     return (
@@ -31,14 +31,23 @@ const Navbar = () => {
             <div className="container mx-auto px-4">
                 <div className="flex flex-col md:flex-row justify-between items-center py-4 gap-4">
 
-                    {/* Logo */}
-                    <Link
-                        to={getDashboardPath()}
-                        className="text-white text-2xl font-bold flex items-center gap-2"
-                    >
-                        <FaTachometerAlt />
-                        Client Portal
-                    </Link>
+                    {/* Logo & Public Link */}
+                    <div className="flex items-center gap-4">
+                        <Link
+                            to={getDashboardPath()}
+                            className="text-white text-2xl font-bold flex items-center gap-2"
+                        >
+                            <FaTachometerAlt />
+                            Client Portal
+                        </Link>
+                        <Link
+                            to="/"
+                            className="text-xs text-gray-400 hover:text-white transition font-mono border border-gray-700 rounded px-2.5 py-1"
+                            title="Visit ESG Officials Public Website"
+                        >
+                            &larr; ESG Officials
+                        </Link>
+                    </div>
 
                     {/* Navigation */}
                     <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">

@@ -61,6 +61,12 @@ const Register = () => {
     return (
         <div className="max-w-md mx-auto mt-12 mb-12 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
 
+            <div className="mb-4">
+                <Link to="/" className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wider text-gray-500 hover:text-gray-900 transition font-mono">
+                    &larr; Back to ESG Officials
+                </Link>
+            </div>
+
             {/* Header */}
             <div className="text-center mb-8">
                 <h2 className="text-3xl font-extrabold text-gray-900 mb-2">

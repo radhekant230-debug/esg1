@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd esg-officials/client && npm run build",
+  "outputDirectory": "esg-officials/client/dist",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
