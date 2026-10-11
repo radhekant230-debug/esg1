@@ -18,7 +18,7 @@ export default function ClientPortalLayout({ children }) {
       {/* Client Portal Header */}
       <header className="sticky top-0 z-30 bg-[#161514] text-[#F5F0E8] border-b border-[#2C2A27] px-4 sm:px-6 lg:px-8 py-3.5 shadow-md flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Link to="/portal" className="flex items-center gap-2.5 group">
+          <Link to="/client/dashboard" className="flex items-center gap-2.5 group">
             <svg
               className="w-5 h-5 text-[#C5A880]"
               viewBox="0 0 24 24"
@@ -45,7 +45,7 @@ export default function ClientPortalLayout({ children }) {
           {/* Admin Switcher Shortcut (if admin is previewing client portal) */}
           {isAdmin && (
             <Link
-              to="/admin"
+              to="/admin/dashboard"
               className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/50 hover:bg-amber-500/30 transition"
               title="Return to Admin Portal"
             >
@@ -82,7 +82,10 @@ export default function ClientPortalLayout({ children }) {
 
           {/* Logout */}
           <button
-            onClick={logout}
+            onClick={() => {
+              logout();
+              navigate("/client/login");
+            }}
             className="px-3 py-1.5 rounded-lg text-xs font-medium text-stone-300 hover:text-white hover:bg-stone-800 border border-stone-700/60 transition flex items-center gap-1.5"
             title="Log Out"
           >

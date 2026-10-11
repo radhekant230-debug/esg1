@@ -17,10 +17,14 @@ import PublicCaseStudies from "./pages/public/PublicCaseStudies";
 import PublicResearch from "./pages/public/PublicResearch";
 import PublicContact from "./pages/public/PublicContact";
 
-// ESG Client Portal components & pages
+// ESG Portal components & pages
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import AdminLogin from "./pages/AdminLogin";
+import ManagerLogin from "./pages/ManagerLogin";
+import ClientLogin from "./pages/ClientLogin";
+import AdminDashboard from "./pages/AdminDashboard";
 import ClientDashboard from "./pages/ClientDashboard";
 import ClientPortalLayout from "./components/portal/ClientPortalLayout";
 
@@ -88,22 +92,32 @@ const Spinner = () => (
     </div>
 );
 
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({ children, loginPath = "/login" }) => {
     const { user, loading } = useContext(AuthContext);
     if (loading) return <Spinner />;
-    if (!user) return <Navigate to="/login" replace />;
+    if (!user) return <Navigate to={loginPath} replace />;
     return children;
 };
 
-const RoleRoute = ({ children, allowedRoles }) => {
+const RoleRoute = ({ children, allowedRoles, loginPath }) => {
     const { user, loading } = useContext(AuthContext);
     if (loading) return <Spinner />;
-    if (!user) return <Navigate to="/login" replace />;
+
+    // Auto-detect portal login path based on roles if not explicitly specified
+    const defaultLoginPath = loginPath || (
+        allowedRoles.length === 1 && allowedRoles[0] === "admin"
+            ? "/admin/login"
+            : allowedRoles.includes("manager") && !allowedRoles.includes("client")
+                ? "/manager/login"
+                : "/client/login"
+    );
+
+    if (!user) return <Navigate to={defaultLoginPath} replace />;
     if (!allowedRoles.includes(user.role)) {
-        if (user.role === "admin") return <Navigate to="/admin" replace />;
-        if (user.role === "manager") return <Navigate to="/manager" replace />;
-        if (user.role === "client") return <Navigate to="/portal" replace />;
-        return <Navigate to="/login" replace />;
+        if (user.role === "admin") return <Navigate to="/admin/dashboard" replace />;
+        if (user.role === "manager") return <Navigate to="/manager/dashboard" replace />;
+        if (user.role === "client") return <Navigate to="/client/dashboard" replace />;
+        return <Navigate to={defaultLoginPath} replace />;
     }
     return children;
 };
@@ -170,8 +184,13 @@ const App = () => {
                 <Route path="/contact.html" element={<Navigate to="/contact" replace />} />
 
                 {/* ========================================
-                    2. PORTAL AUTHENTICATION
+                    2. SEPARATE PORTAL AUTHENTICATION
                 ======================================== */}
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/manager/login" element={<ManagerLogin />} />
+                <Route path="/client/login" element={<ClientLogin />} />
+
+                {/* Legacy / Shared Login */}
                 <Route
                     path="/login"
                     element={
@@ -191,34 +210,49 @@ const App = () => {
                 <Route path="/login.html" element={<Navigate to="/login" replace />} />
 
                 {/* ========================================
-                    3. DEDICATED CLIENT PORTAL (/portal)
+                    3. DEDICATED CLIENT PORTAL (/client/*)
                     Clients only see their authorized data with ClientPortalLayout
                 ======================================== */}
                 <Route
-                    path="/portal"
+                    path="/client/dashboard"
                     element={
-                        <RoleRoute allowedRoles={["client", "admin", "manager"]}>
+                        <RoleRoute allowedRoles={["client", "admin", "manager"]} loginPath="/client/login">
                             <ClientPortalLayout>
                                 <ClientDashboard />
                             </ClientPortalLayout>
                         </RoleRoute>
                     }
                 />
-                <Route path="/portal.html" element={<Navigate to="/portal" replace />} />
-                <Route path="/dashboard" element={<Navigate to="/portal" replace />} />
-                <Route path="/client-portal" element={<Navigate to="/portal" replace />} />
-                <Route path="/portal-overview" element={<Navigate to="/portal" replace />} />
+                <Route path="/client" element={<Navigate to="/client/dashboard" replace />} />
+                <Route path="/portal" element={<Navigate to="/client/dashboard" replace />} />
+                <Route path="/portal.html" element={<Navigate to="/client/dashboard" replace />} />
+                <Route path="/dashboard" element={<Navigate to="/client/dashboard" replace />} />
+                <Route path="/client-portal" element={<Navigate to="/client/dashboard" replace />} />
+                <Route path="/portal-overview" element={<Navigate to="/client/dashboard" replace />} />
 
                 {/* ========================================
                     4. DEDICATED ADMIN PORTAL (/admin/*)
                     Strictly role-protected for admin only.
                     Has its own layout, 15-item sidebar, navigation & executive hub.
                 ======================================== */}
-                {/* 1. Overview */}
+                {/* 1. Main Admin Dashboard */}
                 <Route
-                    path="/admin"
+                    path="/admin/dashboard"
                     element={
-                        <RoleRoute allowedRoles={["admin"]}>
+                        <RoleRoute allowedRoles={["admin"]} loginPath="/admin/login">
+                            <PortalLayout>
+                                <AdminDashboard />
+                            </PortalLayout>
+                        </RoleRoute>
+                    }
+                />
+                <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+
+                {/* Executive Overview & Analytics */}
+                <Route
+                    path="/admin/overview"
+                    element={
+                        <RoleRoute allowedRoles={["admin"]} loginPath="/admin/login">
                             <AdminLayout>
                                 <AdminOverview />
                             </AdminLayout>
@@ -500,18 +534,19 @@ const App = () => {
                 />
 
                 {/* ========================================
-                    6. MANAGER DASHBOARD & COLLABORATION
+                    6. DEDICATED MANAGER PORTAL (/manager/*)
                 ======================================== */}
                 <Route
-                    path="/manager"
+                    path="/manager/dashboard"
                     element={
-                        <RoleRoute allowedRoles={["manager"]}>
+                        <RoleRoute allowedRoles={["manager", "admin"]} loginPath="/manager/login">
                             <PortalLayout>
                                 <ManagerDashboard />
                             </PortalLayout>
                         </RoleRoute>
                     }
                 />
+                <Route path="/manager" element={<Navigate to="/manager/dashboard" replace />} />
 
                 {/* Projects */}
                 <Route

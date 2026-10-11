@@ -30,7 +30,7 @@ const AdminDashboard = () => {
 
     useEffect(() => {
         if (!user || user.role !== "admin") {
-            navigate("/login");
+            navigate("/admin/login");
             return;
         }
 
@@ -181,11 +181,20 @@ const AdminDashboard = () => {
                             Manage Managers
                         </button>
                         <button
-                            onClick={() => navigate("/dashboard")}
+                            onClick={() => navigate("/admin/overview")}
                             className="px-3.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-xs font-semibold border border-stone-700 transition flex items-center gap-1.5"
+                            title="Open 15-Module Executive Performance Hub"
                         >
                             <FaTachometerAlt className="text-amber-400" />
-                            Client Portals
+                            Executive Analytics
+                        </button>
+                        <button
+                            onClick={() => navigate("/client/dashboard")}
+                            className="px-3.5 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white text-xs font-semibold border border-stone-700 transition flex items-center gap-1.5"
+                            title="Preview Client Marketing Portal"
+                        >
+                            <FaUsers className="text-emerald-400" />
+                            Client Portal View
                         </button>
                     </div>
                 </div>

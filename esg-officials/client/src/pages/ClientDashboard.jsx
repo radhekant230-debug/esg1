@@ -93,7 +93,7 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     if (!user) {
-      navigate("/login");
+      navigate("/client/login");
       return;
     }
     // Load clients list if admin or manager

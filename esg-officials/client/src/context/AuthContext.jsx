@@ -35,7 +35,7 @@ export const AuthProvider = ({ children }) => {
     // ==========================================
     // LOGIN
     // ==========================================
-    const login = async (loginId, password) => {
+    const login = async (loginId, password, portal = null) => {
         try {
             const cleanId = (loginId || "").trim();
             const isEmail = cleanId.includes("@");
@@ -46,6 +46,7 @@ export const AuthProvider = ({ children }) => {
                 ...(isEmail
                     ? { email: cleanId }
                     : { clientId: cleanId }),
+                ...(portal ? { portal } : {}),
             };
 
             const { data } = await api.post(

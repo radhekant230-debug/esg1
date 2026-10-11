@@ -1,10 +1,67 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const router = express.Router();
 const { protect, adminOrManager } = require("../middlewares/auth");
 const portalController = require("../controllers/portalController");
+const User = require("../models/User");
 
 // All portal routes require authentication
 router.use(protect);
+
+// Pre-resolve and validate target client for this request (enforcing manager & client data isolation)
+const resolvePortalClient = async (req, res, next) => {
+  try {
+    if (req.user.role === "client") {
+      // Client is strictly isolated to their own account
+      req.targetClientId = req.user._id;
+      return next();
+    }
+
+    // Admin or Manager
+    const targetId = req.query.clientId;
+    if (targetId && mongoose.Types.ObjectId.isValid(targetId)) {
+      if (req.user.role === "manager") {
+        // Manager can ONLY view clients assigned to them
+        const assignedClient = await User.findOne({
+          _id: targetId,
+          role: "client",
+          assignedManager: req.user._id,
+        });
+        if (!assignedClient) {
+          return res.status(403).json({
+            message: "Access denied: You are not authorized to view or manage this client's portal data.",
+          });
+        }
+      }
+      req.targetClientId = targetId;
+      return next();
+    }
+
+    // If no clientId specified in query:
+    if (req.user.role === "manager") {
+      // Pick first client assigned to this manager
+      const firstAssigned = await User.findOne({
+        role: "client",
+        assignedManager: req.user._id,
+      }).sort({ createdAt: 1 });
+      req.targetClientId = firstAssigned ? firstAssigned._id : null;
+      return next();
+    }
+
+    if (req.user.role === "admin") {
+      const firstClient = await User.findOne({ role: "client" }).sort({ createdAt: 1 });
+      req.targetClientId = firstClient ? firstClient._id : null;
+      return next();
+    }
+
+    req.targetClientId = null;
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
+router.use(resolvePortalClient);
 
 // 1. Profile & Client Setup
 router.get("/profile", portalController.getProfile);

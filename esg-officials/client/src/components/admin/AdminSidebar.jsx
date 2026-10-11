@@ -1,5 +1,5 @@
 import React, { useContext } from "react";
-import { NavLink, Link } from "react-router-dom";
+import { NavLink, Link, useNavigate } from "react-router-dom";
 import { AuthContext } from "../../context/AuthContext";
 import {
   FaTachometerAlt,
@@ -25,13 +25,15 @@ import {
 
 export default function AdminSidebar({ isOpen, onClose }) {
   const { user, logout } = useContext(AuthContext);
+  const navigate = useNavigate();
 
   const navSections = [
     {
       title: "EXECUTIVE",
       items: [
-        { label: "1. Overview", to: "/admin", icon: FaTachometerAlt, end: true },
-        { label: "2. Client Management", to: "/admin/clients", icon: FaUsers },
+        { label: "1. Operations Hub", to: "/admin/dashboard", icon: FaTachometerAlt },
+        { label: "2. Overview & Analytics", to: "/admin/overview", icon: FaChartLine },
+        { label: "3. Client Management", to: "/admin/clients", icon: FaUsers },
       ],
     },
     {
@@ -165,7 +167,7 @@ export default function AdminSidebar({ isOpen, onClose }) {
         {/* Footer Actions */}
         <div className="p-3 border-t border-[#2C2A27] bg-[#141312] space-y-1">
           <Link
-            to="/portal"
+            to="/client/dashboard"
             className="flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-stone-400 hover:text-white hover:bg-stone-800/60 transition"
             title="Preview Client Portal"
           >
@@ -174,7 +176,7 @@ export default function AdminSidebar({ isOpen, onClose }) {
               Client Portal View
             </span>
             <span className="text-[10px] font-mono bg-stone-800 px-1.5 py-0.5 rounded text-stone-300">
-              /portal
+              /client/dashboard
             </span>
           </Link>
 
@@ -190,7 +192,10 @@ export default function AdminSidebar({ isOpen, onClose }) {
           </Link>
 
           <button
-            onClick={logout}
+            onClick={() => {
+              logout();
+              navigate("/admin/login");
+            }}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-950/30 transition text-left"
           >
             <FaSignOutAlt />

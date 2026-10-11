@@ -103,20 +103,27 @@ const PublicHeader = () => {
         <div className="nav-cta">
           {user ? (
             <Link
-              to={isAdmin ? "/admin" : isManager ? "/manager" : "/dashboard"}
+              to={isAdmin ? "/admin/dashboard" : isManager ? "/manager/dashboard" : "/client/dashboard"}
               className="nav-login"
               style={isAdmin ? { color: "#8B6E3F", fontWeight: 700 } : {}}
-              title={isAdmin ? "Open ESG Admin Dashboard" : "Open Your Portal"}
+              title={isAdmin ? "Open ESG Admin Dashboard" : isManager ? "Open Manager Dashboard" : "Open Client Portal"}
             >
               {isAdmin ? "Admin Portal" : isManager ? "Manager Portal" : "Client Portal"}
             </Link>
           ) : (
             <div className="flex items-center gap-2">
-              <Link to="/login" className="nav-login" title="Client Portal Sign In">
+              <Link to="/client/login" className="nav-login" title="Client Portal Sign In">
                 Client Login
               </Link>
               <Link
-                to="/login?role=admin"
+                to="/manager/login"
+                className="hidden md:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider font-semibold border border-purple-300 text-purple-700 hover:bg-purple-50 transition"
+                title="Manager Portal Login"
+              >
+                Manager
+              </Link>
+              <Link
+                to="/admin/login"
                 className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider font-bold border border-[#C5A880]/60 text-[#8B6E3F] hover:bg-[#C5A880]/15 hover:border-[#8B6E3F] transition shadow-xs"
                 title="ESG Admin Portal Login"
               >

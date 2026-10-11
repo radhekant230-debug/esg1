@@ -15,10 +15,12 @@ const ClientVaultDocument = require("../models/portal/ClientVaultDocument");
 
 // Helper to determine target client ID with strict authorization
 const getTargetClientId = (req) => {
+  if (req.targetClientId) {
+    return req.targetClientId;
+  }
   if (req.user.role === "client") {
     return req.user._id;
   }
-  // Admin or Manager can view specific client via query param or default to their first assigned client
   if (req.query.clientId && mongoose.Types.ObjectId.isValid(req.query.clientId)) {
     return req.query.clientId;
   }
@@ -916,7 +918,12 @@ exports.getAllClientsForSelector = async (req, res) => {
       return res.status(403).json({ message: "Restricted to agency team." });
     }
 
-    const clients = await User.find({ role: "client" })
+    const clientFilter = { role: "client" };
+    if (req.user.role === "manager") {
+      clientFilter.assignedManager = req.user._id;
+    }
+
+    const clients = await User.find(clientFilter)
       .select("name email companyName clientId assignedManager")
       .populate("assignedManager", "name")
       .sort({ createdAt: -1 });

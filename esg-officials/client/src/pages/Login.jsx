@@ -28,11 +28,11 @@ const Login = () => {
 
                 // Redirect according to role
                 if (data.role === "admin") {
-                    navigate("/admin");
+                    navigate("/admin/dashboard");
                 } else if (data.role === "manager") {
-                    navigate("/manager");
+                    navigate("/manager/dashboard");
                 } else if (data.role === "client") {
-                    navigate("/portal");
+                    navigate("/client/dashboard");
                 } else {
                     setError("Invalid user role.");
                 }
@@ -41,11 +41,11 @@ const Login = () => {
 
                 // Redirect according to role
                 if (data.role === "admin") {
-                    navigate("/admin");
+                    navigate("/admin/dashboard");
                 } else if (data.role === "manager") {
-                    navigate("/manager");
+                    navigate("/manager/dashboard");
                 } else if (data.role === "client") {
-                    navigate("/portal");
+                    navigate("/client/dashboard");
                 } else {
                     setError("Invalid user role.");
                 }
@@ -84,8 +84,30 @@ const Login = () => {
                 </h2>
 
                 <p className="text-gray-500 text-sm">
-                    Sign in to access your Admin, Manager, or Client Dashboard
+                    Sign in to your portal or choose your dedicated role login:
                 </p>
+
+                {/* Direct Portal Links */}
+                <div className="grid grid-cols-3 gap-2 mt-4 text-xs font-semibold">
+                    <Link
+                        to="/client/login"
+                        className="p-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition text-center"
+                    >
+                        Client Portal
+                    </Link>
+                    <Link
+                        to="/manager/login"
+                        className="p-2 rounded-lg bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100 transition text-center"
+                    >
+                        Manager Portal
+                    </Link>
+                    <Link
+                        to="/admin/login"
+                        className="p-2 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition text-center"
+                    >
+                        Admin Portal
+                    </Link>
+                </div>
             </div>
 
             {/* Error Message */}

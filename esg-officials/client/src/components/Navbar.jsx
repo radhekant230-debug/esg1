@@ -16,16 +16,20 @@ const Navbar = () => {
     const navigate = useNavigate();
 
     const handleLogout = () => {
+        const wasAdmin = isAdmin;
+        const wasManager = isManager;
         logout();
-        navigate("/login");
+        if (wasAdmin) navigate("/admin/login");
+        else if (wasManager) navigate("/manager/login");
+        else navigate("/client/login");
     };
 
     const getDashboardPath = () => {
-        if (isAdmin) return "/admin";
-        if (isManager) return "/manager";
-        if (isClient) return "/dashboard";
+        if (isAdmin) return "/admin/dashboard";
+        if (isManager) return "/manager/dashboard";
+        if (isClient) return "/client/dashboard";
 
-        return "/login";
+        return "/client/login";
     };
 
     const renderRoleBadge = (role) => {
@@ -120,7 +124,7 @@ const Navbar = () => {
                                             ADMIN:
                                         </span>
                                         <Link
-                                            to="/admin"
+                                            to="/admin/dashboard"
                                             className="text-stone-200 hover:text-white transition flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-stone-800 hover:bg-stone-700 border border-stone-700 shadow-sm"
                                             title="Admin Control Center"
                                         >

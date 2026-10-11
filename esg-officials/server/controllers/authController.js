@@ -134,6 +134,7 @@ exports.loginUser = async (req, res) => {
     loginId,
     username,
     password,
+    portal,
   } = req.body;
 
   try {
@@ -168,6 +169,26 @@ exports.loginUser = async (req, res) => {
       });
     }
 
+    // Portal-specific role enforcement
+    if (portal) {
+      const requestedPortal = String(portal).toLowerCase().trim();
+      if (requestedPortal === "admin" && user.role !== "admin") {
+        return res.status(403).json({
+          message: "Access denied: This login is reserved for ESG Administrators only.",
+        });
+      }
+      if (requestedPortal === "manager" && user.role !== "manager" && user.role !== "admin") {
+        return res.status(403).json({
+          message: "Access denied: This login is reserved for Account Managers only.",
+        });
+      }
+      if (requestedPortal === "client" && user.role !== "client") {
+        return res.status(403).json({
+          message: "Access denied: This login is reserved for Clients only.",
+        });
+      }
+    }
+
     // Check whether account is active
     if (!user.isActive) {
       return res.status(403).json({
@@ -176,11 +197,26 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    // Compare password
-    const isMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    // Compare password with support for bcrypt hash & safe auto-migration of legacy plaintext passwords
+    let isMatch = false;
+    const isBcrypt = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(user.password);
+
+    if (isBcrypt) {
+      isMatch = await bcrypt.compare(password, user.password);
+    } else {
+      // Legacy plaintext password check
+      if (user.password === password) {
+        isMatch = true;
+        try {
+          // Immediately upgrade legacy plaintext password to secure bcrypt hash
+          user.password = await bcrypt.hash(password, 10);
+          await user.save();
+          console.log(`[auth] Automatically migrated plaintext password to bcrypt for: ${user.email}`);
+        } catch (hashErr) {
+          console.error("[auth] Failed to auto-hash legacy password:", hashErr.message);
+        }
+      }
+    }
 
     if (!isMatch) {
       return res.status(401).json({

@@ -26,8 +26,8 @@ const ManagerDashboard = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        if (!user || user.role !== "manager") {
-            navigate("/login");
+        if (!user || (user.role !== "manager" && user.role !== "admin")) {
+            navigate("/manager/login");
             return;
         }
 
