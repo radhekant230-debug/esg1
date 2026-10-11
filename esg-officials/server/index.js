@@ -21,6 +21,8 @@ if (!process.env.RESEND_API_KEY) {
     console.warn("[startup] WARNING: RESEND_API_KEY is not set — OTP and email features will not work.");
 }
 
+const { ensureAdminAccount } = require("./utils/adminBootstrap");
+
 const authRoutes = require("./routes/auth");
 const projectRoutes = require("./routes/project");
 const clientRoutes = require("./routes/client");
@@ -40,26 +42,63 @@ const app = express();
 
 // ==========================================
 // CORS
+// Allows Vercel production & preview deployments,
+// Render deployments, local development across ports,
+// and any explicitly configured environment URLs.
 // ==========================================
-const allowedOrigins = [
-    process.env.CLIENT_URL || "http://localhost:5173",
-    process.env.STATIC_SITE_URL || "http://localhost:5500",
-    // Allow null origin so the static site works when opened directly from the filesystem (file://)
-    null,
-];
+const isAllowedOrigin = (origin) => {
+    // Allow non-browser requests (curl, mobile, server-to-server, Render health checks, file://)
+    if (!origin || origin === "null") return true;
 
-app.use(
-    cors({
-        origin: (origin, callback) => {
-            if (!origin || allowedOrigins.includes(origin)) {
-                callback(null, true);
-            } else {
-                callback(new Error(`CORS policy: origin ${origin} is not allowed`));
-            }
-        },
-        credentials: true,
-    })
-);
+    const normalizedOrigin = origin.replace(/\/+$/, "");
+
+    // 1. Explicitly configured origins (supports comma-separated list)
+    const envOrigins = [
+        process.env.CLIENT_URL,
+        process.env.FRONTEND_URL,
+        process.env.STATIC_SITE_URL,
+        ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : []),
+    ]
+        .filter(Boolean)
+        .map((o) => o.trim().replace(/\/+$/, ""));
+
+    if (envOrigins.includes(normalizedOrigin)) {
+        return true;
+    }
+
+    // 2. Local development on localhost or 127.0.0.1 on any port
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(normalizedOrigin)) {
+        return true;
+    }
+
+    // 3. Vercel deployments (*.vercel.app)
+    if (/^https:\/\/([a-zA-Z0-9_-]+\.)*vercel\.app$/.test(normalizedOrigin)) {
+        return true;
+    }
+
+    // 4. Render deployments (*.onrender.com)
+    if (/^https:\/\/([a-zA-Z0-9_-]+\.)*onrender\.com$/.test(normalizedOrigin)) {
+        return true;
+    }
+
+    return false;
+};
+
+const corsOptions = {
+    origin: (origin, callback) => {
+        if (isAllowedOrigin(origin)) {
+            callback(null, true);
+        } else {
+            console.warn(`[CORS] Blocked request from disallowed origin: ${origin}`);
+            callback(null, false);
+        }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+};
+
+app.use(cors(corsOptions));
 
 app.use(express.json());
 
@@ -68,6 +107,24 @@ app.use(express.json());
 // ==========================================
 app.get("/", (req, res) => {
     res.json({ message: "Client Management Portal API is running" });
+});
+
+// ==========================================
+// API ROUTE NORMALIZER
+// Prevents 404s when frontend or external clients call
+// without /api (e.g. /auth/login) or with duplicate /api/api
+// ==========================================
+app.use((req, res, next) => {
+    if (req.url.startsWith("/api/api/")) {
+        req.url = req.url.replace(/^\/api\/api\//, "/api/");
+    } else if (
+        !req.url.startsWith("/api") &&
+        req.url !== "/" &&
+        !req.url.startsWith("/uploads")
+    ) {
+        req.url = `/api${req.url.startsWith("/") ? "" : "/"}${req.url}`;
+    }
+    next();
 });
 
 // ==========================================
@@ -107,7 +164,9 @@ app.use((err, req, res, next) => {
     }
 
     console.error("Server Error:", err.message);
-    res.status(err.status || 500).json({ message: err.message || "Internal Server Error" });
+    res.status(err.status || 500).json({
+        message: err.status ? err.message : "Internal Server Error",
+    });
 });
 
 // ==========================================
@@ -119,8 +178,9 @@ const PORT = process.env.PORT || 5000;
 
 mongoose
     .connect(process.env.MONGO_URI, { dbName: "esg-official-clients" })
-    .then(() => {
+    .then(async () => {
         console.log("MongoDB connected → database: esg-official-clients");
+        await ensureAdminAccount();
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/`);
@@ -128,5 +188,11 @@ mongoose
     })
     .catch((err) => {
         console.error("MongoDB connection error:", err.message);
+        if (err.message && err.message.includes("tlsv1 alert internal error")) {
+            console.error(
+                "[Atlas Diagnostic] SSL alert 80 indicates MongoDB Atlas Network Access rejected this IP. " +
+                "Verify your Atlas Network Access IP allowlist."
+            );
+        }
         process.exit(1);
     });

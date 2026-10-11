@@ -1,9 +1,9 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
-import { useNavigate, Link, useSearchParams } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 const Login = () => {
-    const [email, setEmail] = useState("");
+    const [loginId, setLoginId] = useState("");
     const [password, setPassword] = useState("");
     const [otp, setOtp] = useState("");
 
@@ -15,14 +15,6 @@ const Login = () => {
 
     const { login, verifyOTP } = useContext(AuthContext);
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
-
-    useEffect(() => {
-        if (searchParams.get("role") === "admin") {
-            setEmail("admin@esgofficial.com");
-            setPassword("password123");
-        }
-    }, [searchParams]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -32,7 +24,7 @@ const Login = () => {
 
         try {
             if (!showOTP) {
-                const data = await login(email, password);
+                const data = await login(loginId, password);
 
                 // Redirect according to role
                 if (data.role === "admin") {
@@ -45,7 +37,7 @@ const Login = () => {
                     setError("Invalid user role.");
                 }
             } else {
-                const data = await verifyOTP(email, otp);
+                const data = await verifyOTP(loginId, otp);
 
                 // Redirect according to role
                 if (data.role === "admin") {
@@ -68,7 +60,7 @@ const Login = () => {
                 setError(
                     err?.message ||
                     err ||
-                    "Something went wrong. Please try again."
+                    "Invalid credentials. Please verify your details."
                 );
             }
         } finally {
@@ -96,51 +88,9 @@ const Login = () => {
                 </p>
             </div>
 
-            {/* Quick Demo Access Buttons */}
-            <div className="mb-6 p-3 bg-stone-50 border border-stone-200 rounded-lg">
-                <p className="text-[11px] font-mono uppercase tracking-wider text-stone-500 font-bold mb-2 text-center">
-                    Quick Role Access (Click to Fill):
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setEmail("admin@esgofficial.com");
-                            setPassword("password123");
-                        }}
-                        className="px-2 py-1.5 rounded text-xs font-bold bg-amber-500/15 border border-amber-500/40 text-amber-800 hover:bg-amber-500/25 transition text-center shadow-xs"
-                        title="Fill Administrator Credentials (admin@esgofficial.com)"
-                    >
-                        ★ Admin
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setEmail("rahul.manager@esgofficial.com");
-                            setPassword("password123");
-                        }}
-                        className="px-2 py-1.5 rounded text-xs font-bold bg-purple-500/15 border border-purple-500/40 text-purple-800 hover:bg-purple-500/25 transition text-center shadow-xs"
-                        title="Fill Manager Credentials (rahul.manager@esgofficial.com)"
-                    >
-                        Manager
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setEmail("cafemysa@client.com");
-                            setPassword("password123");
-                        }}
-                        className="px-2 py-1.5 rounded text-xs font-bold bg-emerald-500/15 border border-emerald-500/40 text-emerald-800 hover:bg-emerald-500/25 transition text-center shadow-xs"
-                        title="Fill Client Credentials (Café Mysa)"
-                    >
-                        Client
-                    </button>
-                </div>
-            </div>
-
-            {/* Error */}
+            {/* Error Message */}
             {error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 text-center shadow-inner border border-red-100">
+                <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-6 text-center shadow-inner border border-red-100 text-sm font-medium">
                     {error}
                 </div>
             )}
@@ -149,24 +99,23 @@ const Login = () => {
                 onSubmit={handleSubmit}
                 className="space-y-6"
             >
-
                 {!showOTP ? (
                     <>
-                        {/* Email */}
+                        {/* Email or Client ID */}
                         <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                Email Address
+                                Email Address or Client ID
                             </label>
 
                             <input
-                                type="email"
+                                type="text"
                                 required
-                                autoComplete="email"
-                                placeholder="Enter your email"
+                                autoComplete="username"
+                                placeholder="e.g. name@company.com or CLI-2026-0001"
                                 className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-gray-700 focus:border-gray-700 transition shadow-sm outline-none"
-                                value={email}
+                                value={loginId}
                                 onChange={(e) =>
-                                    setEmail(e.target.value)
+                                    setLoginId(e.target.value)
                                 }
                             />
                         </div>
@@ -284,7 +233,7 @@ const Login = () => {
                 <button
                     type="submit"
                     disabled={loading}
-                    className="w-full bg-gray-900 text-white font-bold py-3 rounded-lg hover:bg-black focus:ring-4 focus:ring-gray-200 transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="w-full bg-gray-900 text-white font-bold py-3 rounded-lg hover:bg-black focus:ring-4 focus:ring-gray-200 transition shadow-md disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
                     {loading
                         ? "Processing..."

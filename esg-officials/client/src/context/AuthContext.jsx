@@ -35,43 +35,51 @@ export const AuthProvider = ({ children }) => {
     // ==========================================
     // LOGIN
     // ==========================================
-   const login = async (loginId, password) => {
-    try {
-        const isEmail = loginId.includes("@");
+    const login = async (loginId, password) => {
+        try {
+            const cleanId = (loginId || "").trim();
+            const isEmail = cleanId.includes("@");
 
-        const payload = {
-            password,
-            ...(isEmail
-                ? { email: loginId }
-                : { clientId: loginId }),
-        };
+            const payload = {
+                password,
+                loginId: cleanId,
+                ...(isEmail
+                    ? { email: cleanId }
+                    : { clientId: cleanId }),
+            };
 
-        const { data } = await api.post(
-            "/auth/login",
-            payload
-        );
+            const { data } = await api.post(
+                "/auth/login",
+                payload
+            );
 
-        setUser(data);
+            setUser(data);
 
-        localStorage.setItem(
-            "userInfo",
-            JSON.stringify(data)
-        );
+            localStorage.setItem(
+                "userInfo",
+                JSON.stringify(data)
+            );
 
-        localStorage.setItem(
-            "token",
-            data.token
-        );
+            localStorage.setItem(
+                "token",
+                data.token
+            );
 
-        return data;
-    } catch (error) {
-        const message =
-            error.response?.data?.message ||
-            "Login failed";
+            return data;
+        } catch (error) {
+            if (error.response?.data?.needsVerification) {
+                const err = new Error("Account not verified");
+                err.needsVerification = true;
+                throw err;
+            }
+            const message =
+                error.response?.data?.message ||
+                error.message ||
+                "Login failed";
 
-        throw new Error(message);
-    }
-};
+            throw new Error(message);
+        }
+    };
 
     // ==========================================
     // CLIENT REGISTRATION

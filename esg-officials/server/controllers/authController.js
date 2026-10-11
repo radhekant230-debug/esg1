@@ -131,42 +131,39 @@ exports.loginUser = async (req, res) => {
   const {
     email,
     clientId,
+    loginId,
+    username,
     password,
   } = req.body;
 
   try {
-    if (
-      (!email && !clientId) ||
-      !password
-    ) {
+    const rawId = (email || clientId || loginId || username || "").toString().trim();
+
+    if (!rawId || !password) {
       return res.status(400).json({
-        message:
-          "Login ID and password are required",
+        message: "Email/Client ID and password are required",
       });
     }
 
     let loginQuery;
 
-    // Email login
-    if (email) {
+    if (rawId.includes("@")) {
       loginQuery = {
-        email: email.trim().toLowerCase(),
+        email: rawId.toLowerCase(),
+      };
+    } else {
+      loginQuery = {
+        $or: [
+          { clientId: rawId },
+          { email: rawId.toLowerCase() },
+        ],
       };
     }
 
-    // Client ID login
-    else {
-      loginQuery = {
-        clientId: clientId.trim(),
-      };
-    }
-
-    const user = await User.findOne(
-      loginQuery
-    );
+    const user = await User.findOne(loginQuery);
 
     if (!user) {
-      return res.status(400).json({
+      return res.status(401).json({
         message: "Invalid credentials",
       });
     }
@@ -186,7 +183,7 @@ exports.loginUser = async (req, res) => {
     );
 
     if (!isMatch) {
-      return res.status(400).json({
+      return res.status(401).json({
         message: "Invalid credentials",
       });
     }
@@ -268,13 +265,16 @@ exports.loginUser = async (req, res) => {
       ),
     });
   } catch (error) {
-    console.error(
-      "Login Error:",
-      error
-    );
+    console.error("Login Error:", error.message);
+
+    if (error.name === "MongoServerSelectionError" || error.name === "MongoNetworkError") {
+      return res.status(503).json({
+        message: "Database service temporarily unavailable. Please verify MongoDB network access rules.",
+      });
+    }
 
     return res.status(500).json({
-      message: "Error logging in",
+      message: "Internal server error during authentication",
     });
   }
 };
