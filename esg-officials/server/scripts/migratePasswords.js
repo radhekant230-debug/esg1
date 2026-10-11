@@ -48,7 +48,9 @@ async function migrate() {
   let alreadyHashedCount = 0;
 
   for (const user of allUsers) {
-    const isBcrypt = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(user.password);
+    const isBcrypt = typeof user.password === "string" && 
+      (user.password.startsWith("$2a$") || user.password.startsWith("$2b$") || user.password.startsWith("$2y$")) && 
+      user.password.length === 60;
     if (!isBcrypt) {
       console.log(`Migrating plaintext password for user: ${user.email} (${user.role})...`);
       const hashedPassword = await bcrypt.hash(user.password, 10);

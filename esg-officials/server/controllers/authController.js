@@ -199,7 +199,9 @@ exports.loginUser = async (req, res) => {
 
     // Compare password with support for bcrypt hash & safe auto-migration of legacy plaintext passwords
     let isMatch = false;
-    const isBcrypt = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(user.password);
+    const isBcrypt = typeof user.password === "string" && 
+      (user.password.startsWith("$2a$") || user.password.startsWith("$2b$") || user.password.startsWith("$2y$")) && 
+      user.password.length === 60;
 
     if (isBcrypt) {
       isMatch = await bcrypt.compare(password, user.password);
