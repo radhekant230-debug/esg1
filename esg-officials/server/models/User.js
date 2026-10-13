@@ -80,6 +80,13 @@ const userSchema = new mongoose.Schema(
       }
     ],
 
+    assignedBusinesses: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "SalesBusiness"
+      }
+    ],
+
     isVerified: {
       type: Boolean,
       default: false

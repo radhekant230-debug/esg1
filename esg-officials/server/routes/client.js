@@ -17,6 +17,9 @@ const {
     deleteClient,
     getAllManagers,
     createManager,
+    updateManagerLocation,
+    updateManager,
+    toggleManagerStatus,
     resetManagerPassword,
 } = require("../controllers/clientController");
 
@@ -39,6 +42,19 @@ router.get("/managers/all", protect, admin, getAllManagers);
 // Create manager
 // Admin only
 router.post("/managers", protect, admin, createManager);
+
+// Update manager location
+// Admin only
+router.put("/managers/:id/location", protect, admin, updateManagerLocation);
+
+// Toggle manager account status
+// Admin only
+router.put("/managers/:id/status", protect, admin, toggleManagerStatus);
+router.patch("/managers/:id/status", protect, admin, toggleManagerStatus);
+
+// Update manager profile / details
+// Admin only
+router.put("/managers/:id", protect, admin, updateManager);
 
 // Reset manager password
 // Admin only

@@ -1,43 +1,64 @@
 const User = require("../models/User");
 const SalesBusiness = require("../models/sales/SalesBusiness");
 const SalesRecord = require("../models/sales/SalesRecord");
+const SalesLocation = require("../models/sales/SalesLocation");
 
 /**
- * Initializes and bootstraps state-wise sales businesses and records.
+ * Initializes and bootstraps state-wise sales locations, businesses, and records.
  * Ensures Rahul Sharma is configured as Ranchi/Jharkhand manager,
- * and populates the example hotels, restaurants, and monthly sales data.
+ * seeds the initial locations (Raichur, Ranchi, Dhanbad, Jaipur, Coimbatore, Guwahati, Bhubaneswar),
+ * and populates example hotels, restaurants, and monthly sales data.
  */
 async function ensureSalesData() {
   try {
-    // 1. Find or verify manager Rahul Sharma
+    // 1. Seed the 7 Initial Manager Locations
+    const initialLocations = [
+      { city: "Raichur", state: "Karnataka" },
+      { city: "Ranchi", state: "Jharkhand" },
+      { city: "Dhanbad", state: "Jharkhand" },
+      { city: "Jaipur", state: "Rajasthan" },
+      { city: "Coimbatore", state: "Tamil Nadu" },
+      { city: "Guwahati", state: "Assam" },
+      { city: "Bhubaneswar", state: "Odisha" },
+    ];
+
+    for (const loc of initialLocations) {
+      await SalesLocation.findOneAndUpdate(
+        { city: loc.city, state: loc.state },
+        { ...loc, isDefault: true },
+        { upsert: true, new: true }
+      );
+    }
+
+    // 2. Find or verify manager Rahul Sharma (Ranchi Manager)
     const manager = await User.findOne({ email: "rahul.manager@esgofficial.com" });
     if (manager) {
       let updated = false;
-      if (!manager.assignedState || manager.assignedState !== "Jharkhand") {
+      if (manager.assignedState !== "Jharkhand") {
         manager.assignedState = "Jharkhand";
         updated = true;
       }
-      if (!manager.assignedCity || manager.assignedCity !== "Ranchi") {
+      if (manager.assignedCity !== "Ranchi") {
         manager.assignedCity = "Ranchi";
         updated = true;
       }
-      if (!manager.assignedStates || manager.assignedStates.length === 0) {
+      if (!manager.assignedStates || manager.assignedStates.length === 0 || manager.assignedStates[0] !== "Jharkhand") {
         manager.assignedStates = ["Jharkhand"];
         updated = true;
       }
-      if (!manager.assignedCities || manager.assignedCities.length === 0) {
-        manager.assignedCities = ["Ranchi", "Dhanbad"];
+      if (!manager.assignedCities || manager.assignedCities.length === 0 || manager.assignedCities[0] !== "Ranchi") {
+        manager.assignedCities = ["Ranchi"];
         updated = true;
       }
       if (updated) {
         await manager.save();
-        console.log("[salesBootstrap] Updated Rahul Sharma with Ranchi/Jharkhand regional assignments.");
+        console.log("[salesBootstrap] Updated Rahul Sharma with Ranchi/Jharkhand assignment.");
       }
     }
 
     const managerId = manager ? manager._id : null;
 
-    // 2. Default Businesses across States
+    // 3. Default Businesses across States & Cities
     const initialBusinesses = [
       // Jharkhand - Ranchi (Assigned to Rahul Sharma)
       {
@@ -93,7 +114,7 @@ async function ensureSalesData() {
         assignedManager: managerId,
       },
 
-      // Jharkhand - Dhanbad (Assigned to Rahul Sharma)
+      // Jharkhand - Dhanbad
       {
         name: "Coal Capital Grand",
         code: "BIZ-JH-DHN-001",
@@ -104,8 +125,8 @@ async function ensureSalesData() {
         phone: "+91 326 230 1122",
         email: "info@coalcapitalgrand.com",
         monthlyTarget: 220000,
-        notes: "Central business hotel with 50 executive rooms.",
-        assignedManager: managerId,
+        notes: "Premier commercial hotel in the heart of Dhanbad.",
+        assignedManager: null,
       },
       {
         name: "Black Diamond Diner",
@@ -113,26 +134,26 @@ async function ensureSalesData() {
         category: "Restaurant",
         state: "Jharkhand",
         city: "Dhanbad",
-        address: "Saraidhela, Dhanbad, Jharkhand 826127",
+        address: "Saraidhela Main Road, Dhanbad, Jharkhand 826004",
         phone: "+91 326 231 2233",
-        email: "manager@blackdiamonddiner.com",
+        email: "contact@blackdiamonddiner.com",
         monthlyTarget: 180000,
-        notes: "Family fine-dining restaurant with tandoor specialties.",
-        assignedManager: managerId,
+        notes: "Fine dining North Indian and Mughlai specialty restaurant.",
+        assignedManager: null,
       },
 
-      // Rajasthan - Jaipur (Unassigned / Admin Portfolio)
+      // Rajasthan - Jaipur
       {
         name: "Royal Rajputana Palace",
         code: "BIZ-RJ-JAI-001",
         category: "Hotel",
         state: "Rajasthan",
         city: "Jaipur",
-        address: "Amer Road, Jaipur, Rajasthan 302002",
-        phone: "+91 141 260 3344",
-        email: "heritage@royalrajputanapalace.com",
-        monthlyTarget: 500000,
-        notes: "Heritage luxury palace hotel with courtyards and spa.",
+        address: "MI Road, Pink City, Jaipur, Rajasthan 302001",
+        phone: "+91 141 237 8899",
+        email: "reservations@rajputanapalace.com",
+        monthlyTarget: 450000,
+        notes: "Heritage palace hotel offering authentic Rajasthani hospitality.",
         assignedManager: null,
       },
       {
@@ -142,25 +163,81 @@ async function ensureSalesData() {
         state: "Rajasthan",
         city: "Jaipur",
         address: "Tonk Road, Jaipur, Rajasthan 302018",
-        phone: "+91 141 277 4455",
-        email: "flavors@chokhidhanidelights.com",
-        monthlyTarget: 320000,
-        notes: "Authentic Rajasthani thali restaurant with cultural ambiance.",
+        phone: "+91 141 238 9900",
+        email: "dine@chokhidhanidelights.com",
+        monthlyTarget: 280000,
+        notes: "Traditional Rajasthani thali and cultural dining experience.",
         assignedManager: null,
       },
 
-      // Assam - Guwahati (Unassigned / Admin Portfolio)
+      // Tamil Nadu - Coimbatore
+      {
+        name: "Hotel Tamil Residency",
+        code: "BIZ-TN-CBE-001",
+        category: "Hotel",
+        state: "Tamil Nadu",
+        city: "Coimbatore",
+        address: "Avinashi Road, Peelamedu, Coimbatore, Tamil Nadu 641004",
+        phone: "+422 257 3344",
+        email: "contact@tamilresidency.com",
+        monthlyTarget: 320000,
+        notes: "Upscale business hotel near Coimbatore Airport.",
+        assignedManager: null,
+      },
+      {
+        name: "Kovai Flavors Kitchen",
+        code: "BIZ-TN-CBE-002",
+        category: "Restaurant",
+        state: "Tamil Nadu",
+        city: "Coimbatore",
+        address: "DB Road, RS Puram, Coimbatore, Tamil Nadu 641002",
+        phone: "+422 258 4455",
+        email: "dine@kovaiflavors.com",
+        monthlyTarget: 210000,
+        notes: "Kongunadu culinary traditional and chettinad delicacies.",
+        assignedManager: null,
+      },
+
+      // Karnataka - Raichur
+      {
+        name: "Krishna River View Hotel",
+        code: "BIZ-KA-RAI-001",
+        category: "Hotel",
+        state: "Karnataka",
+        city: "Raichur",
+        address: "Station Road, Beside APMC Yard, Raichur, Karnataka 584101",
+        phone: "+8532 224 556",
+        email: "reservations@krishnariverview.com",
+        monthlyTarget: 200000,
+        notes: "Commercial executive hotel for business travelers and tourists.",
+        assignedManager: null,
+      },
+      {
+        name: "Raichur Spices Diner",
+        code: "BIZ-KA-RAI-002",
+        category: "Restaurant",
+        state: "Karnataka",
+        city: "Raichur",
+        address: "Lingasugur Road, Raichur, Karnataka 584102",
+        phone: "+8532 225 667",
+        email: "info@raichurspices.com",
+        monthlyTarget: 160000,
+        notes: "North Karnataka jowar rotti and spicy South Indian meals.",
+        assignedManager: null,
+      },
+
+      // Assam - Guwahati
       {
         name: "Brahmaputra Grand",
         code: "BIZ-AS-GUW-001",
         category: "Hotel",
         state: "Assam",
         city: "Guwahati",
-        address: "GS Road, Khanapara, Guwahati, Assam 781022",
-        phone: "+91 361 222 5566",
-        email: "frontdesk@brahmaputragrand.com",
-        monthlyTarget: 280000,
-        notes: "Riverview corporate transit hotel.",
+        address: "GS Road, Christian Basti, Guwahati, Assam 781005",
+        phone: "+91 361 246 1122",
+        email: "stay@brahmaputragrand.com",
+        monthlyTarget: 300000,
+        notes: "Luxury riverside hotel with state-of-the-art corporate event suites.",
         assignedManager: null,
       },
       {
@@ -169,26 +246,26 @@ async function ensureSalesData() {
         category: "Restaurant",
         state: "Assam",
         city: "Guwahati",
-        address: "Christian Basti, GS Road, Guwahati, Assam 781005",
-        phone: "+91 361 234 6677",
+        address: "Uzan Bazar, Riverside Road, Guwahati, Assam 781001",
+        phone: "+91 361 247 2233",
         email: "taste@kazirangadine.com",
         monthlyTarget: 190000,
-        notes: "Traditional Assamese and North-Eastern indigenous dining.",
+        notes: "Authentic Assamese and North-Eastern indigenous cuisine.",
         assignedManager: null,
       },
 
-      // Odisha - Bhubaneswar (Unassigned / Admin Portfolio)
+      // Odisha - Bhubaneswar
       {
         name: "Temple City Residency",
         code: "BIZ-OD-BHU-001",
         category: "Hotel",
         state: "Odisha",
         city: "Bhubaneswar",
-        address: "Janpath, Saheed Nagar, Bhubaneswar, Odisha 751007",
+        address: "Janpath, Kharvel Nagar, Bhubaneswar, Odisha 751001",
         phone: "+91 674 250 7788",
-        email: "stay@templecityresidency.com",
-        monthlyTarget: 310000,
-        notes: "Business hotel near IT corridor.",
+        email: "bookings@templecityresidency.com",
+        monthlyTarget: 260000,
+        notes: "Modern smart-stay hotel near Bhubaneswar Smart City hub.",
         assignedManager: null,
       },
       {
@@ -216,12 +293,14 @@ async function ensureSalesData() {
       }
     }
 
-    // 3. Seed Monthly Sales Records for September 2026 and October 2026
+    // 4. Seed Monthly Sales Records for September 2026 and October 2026
     const hotelRoyal = await SalesBusiness.findOne({ name: "Hotel Royal", city: "Ranchi" });
     const mayaRestaurant = await SalesBusiness.findOne({ name: "Maya Multicuisine Restaurant", city: "Ranchi" });
     const hotelGreenHorizon = await SalesBusiness.findOne({ name: "Hotel Green Horizon", city: "Ranchi" });
     const heavenLounge = await SalesBusiness.findOne({ name: "Heaven Lounge & Bar", city: "Ranchi" });
     const coalCapital = await SalesBusiness.findOne({ name: "Coal Capital Grand", city: "Dhanbad" });
+    const cbeHotel = await SalesBusiness.findOne({ name: "Hotel Tamil Residency", city: "Coimbatore" });
+    const raiHotel = await SalesBusiness.findOne({ name: "Krishna River View Hotel", city: "Raichur" });
 
     const admin = await User.findOne({ role: "admin" });
     const uploaderId = managerId || (admin ? admin._id : null);
@@ -295,7 +374,7 @@ async function ensureSalesData() {
           totalSales: 210000,
           orders: 110,
           target: 200000,
-          remarks: "Target Achieved",
+          remarks: "Exceeded target",
           uploadedBy: uploaderId,
           uploaderName,
           source: "manual",
@@ -314,7 +393,7 @@ async function ensureSalesData() {
           totalSales: 310000,
           orders: 140,
           target: 350000,
-          remarks: "Steady occupancy",
+          remarks: "Conference surge",
           uploadedBy: uploaderId,
           uploaderName,
           source: "manual",
@@ -331,7 +410,7 @@ async function ensureSalesData() {
           totalSales: 345000,
           orders: 155,
           target: 350000,
-          remarks: "Near Target",
+          remarks: "Nearly met quota",
           uploadedBy: uploaderId,
           uploaderName,
           source: "manual",
@@ -348,9 +427,9 @@ async function ensureSalesData() {
           year: 2026,
           monthName: "September 2026",
           totalSales: 220000,
-          orders: 105,
+          orders: 130,
           target: 250000,
-          remarks: "Good weekend traffic",
+          remarks: "Weekend crowds",
           uploadedBy: uploaderId,
           uploaderName,
           source: "manual",
@@ -365,15 +444,15 @@ async function ensureSalesData() {
           year: 2026,
           monthName: "October 2026",
           totalSales: 240000,
-          orders: 115,
+          orders: 142,
           target: 250000,
-          remarks: "Events boosted sales",
+          remarks: "Festive kickoff",
           uploadedBy: uploaderId,
           uploaderName,
           source: "manual",
         },
 
-        // Coal Capital Grand - Dhanbad
+        // Coal Capital Grand (Dhanbad)
         coalCapital && {
           business: coalCapital._id,
           businessName: coalCapital.name,
@@ -384,9 +463,9 @@ async function ensureSalesData() {
           year: 2026,
           monthName: "September 2026",
           totalSales: 190000,
-          orders: 90,
+          orders: 88,
           target: 220000,
-          remarks: "Regular corporate stays",
+          remarks: "Stable corporate bookings",
           uploadedBy: uploaderId,
           uploaderName,
           source: "manual",
@@ -401,9 +480,47 @@ async function ensureSalesData() {
           year: 2026,
           monthName: "October 2026",
           totalSales: 215000,
-          orders: 100,
+          orders: 98,
           target: 220000,
-          remarks: "Festival surge",
+          remarks: "Approaching target",
+          uploadedBy: uploaderId,
+          uploaderName,
+          source: "manual",
+        },
+
+        // Hotel Tamil Residency (Coimbatore)
+        cbeHotel && {
+          business: cbeHotel._id,
+          businessName: cbeHotel.name,
+          category: cbeHotel.category,
+          state: cbeHotel.state,
+          city: cbeHotel.city,
+          month: 10,
+          year: 2026,
+          monthName: "October 2026",
+          totalSales: 310000,
+          orders: 140,
+          target: 320000,
+          remarks: "Textile expo visitors",
+          uploadedBy: uploaderId,
+          uploaderName,
+          source: "manual",
+        },
+
+        // Krishna River View Hotel (Raichur)
+        raiHotel && {
+          business: raiHotel._id,
+          businessName: raiHotel.name,
+          category: raiHotel.category,
+          state: raiHotel.state,
+          city: raiHotel.city,
+          month: 10,
+          year: 2026,
+          monthName: "October 2026",
+          totalSales: 195000,
+          orders: 95,
+          target: 200000,
+          remarks: "Thermal plant delegates",
           uploadedBy: uploaderId,
           uploaderName,
           source: "manual",
@@ -422,9 +539,9 @@ async function ensureSalesData() {
       }
     }
 
-    console.log("[salesBootstrap] Verified state-wise businesses and initial sales records.");
+    console.log("[salesBootstrap] Verified locations, businesses and sales records.");
   } catch (error) {
-    console.error("[salesBootstrap] Failed to bootstrap sales data:", error.message);
+    console.error("[salesBootstrap] Error:", error.message);
   }
 }
 

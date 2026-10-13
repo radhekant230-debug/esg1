@@ -26,6 +26,7 @@ router.get("/dashboard", salesController.getSalesDashboard);
 
 // 2. Geography & Locations list
 router.get("/locations", salesController.getLocations);
+router.post("/locations", admin, salesController.createLocation);
 
 // 3. Business Management
 router.get("/businesses", salesController.getBusinesses);

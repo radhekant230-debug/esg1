@@ -2,6 +2,7 @@ const xlsx = require("xlsx");
 const SalesBusiness = require("../models/sales/SalesBusiness");
 const SalesRecord = require("../models/sales/SalesRecord");
 const SalesImportJob = require("../models/sales/SalesImportJob");
+const SalesLocation = require("../models/sales/SalesLocation");
 const User = require("../models/User");
 
 // Month names helper
@@ -78,7 +79,7 @@ function parseMonthYear(val) {
 }
 
 /**
- * Resolves a manager's authorized businesses filter
+ * Resolves a manager's authorized businesses filter strictly based on their assigned city/state
  */
 async function getManagerAuthorizedBusinessQuery(user) {
   if (user.role === "admin") {
@@ -86,29 +87,43 @@ async function getManagerAuthorizedBusinessQuery(user) {
   }
 
   const userDoc = await User.findById(user._id);
-  const managerCities = [
-    userDoc?.assignedCity,
-    ...(userDoc?.assignedCities || []),
-  ].filter(Boolean);
+  const managerCity = userDoc?.assignedCity ? userDoc.assignedCity.trim() : null;
+  const rawCities = [managerCity, ...(userDoc?.assignedCities || [])].filter(Boolean);
+  const managerCities = [...new Set(rawCities.map((c) => c.trim()))];
 
-  const managerStates = [
-    userDoc?.assignedState,
-    ...(userDoc?.assignedStates || []),
-  ].filter(Boolean);
+  const managerState = userDoc?.assignedState ? userDoc.assignedState.trim() : null;
+  const rawStates = [managerState, ...(userDoc?.assignedStates || [])].filter(Boolean);
+  const managerStates = [...new Set(rawStates.map((s) => s.trim()))];
 
-  const orConditions = [
-    { assignedManager: user._id },
-  ];
+  const assignedBizIds = userDoc?.assignedBusinesses || [];
 
+  // If specific businesses are assigned, scope strictly to them (and their city if defined)
+  if (assignedBizIds.length > 0) {
+    const bizFilter = {
+      $or: [
+        { _id: { $in: assignedBizIds } },
+        { assignedManager: user._id },
+      ],
+    };
+    if (managerCities.length > 0) {
+      bizFilter.city = { $in: managerCities };
+    }
+    return bizFilter;
+  }
+
+  // Location assignment:
+  // If the manager is assigned to specific cities, restrict strictly to those cities
   if (managerCities.length > 0) {
-    orConditions.push({ city: { $in: managerCities } });
+    const cityFilter = { city: { $in: managerCities } };
+    if (managerStates.length > 0) {
+      cityFilter.state = { $in: managerStates };
+    }
+    return cityFilter;
+  } else if (managerStates.length > 0) {
+    return { state: { $in: managerStates } };
   }
 
-  if (managerStates.length > 0) {
-    orConditions.push({ state: { $in: managerStates } });
-  }
-
-  return { $or: orConditions };
+  return { assignedManager: user._id };
 }
 
 // =========================================================================
@@ -116,13 +131,38 @@ async function getManagerAuthorizedBusinessQuery(user) {
 // =========================================================================
 exports.getSalesDashboard = async (req, res) => {
   try {
+    const userDoc = req.user.role === "manager" ? await User.findById(req.user._id) : null;
+
+    // Cross-city authorization security check: prevent managers from viewing unassigned locations
+    if (req.user.role === "manager" && userDoc) {
+      const allowedCities = [userDoc.assignedCity, ...(userDoc.assignedCities || [])]
+        .filter(Boolean)
+        .map((c) => c.toLowerCase().trim());
+
+      if (req.query.city && req.query.city !== "All" && req.query.city.trim() !== "") {
+        if (!allowedCities.includes(req.query.query ? req.query.city.toLowerCase().trim() : req.query.city.toLowerCase().trim())) {
+          return res.status(403).json({
+            message: `Access denied. You are not authorized to access sales data for "${req.query.city}".`,
+          });
+        }
+      }
+
+      if (req.query.state && req.query.state !== "All" && userDoc.assignedState) {
+        if (req.query.state.toLowerCase().trim() !== userDoc.assignedState.toLowerCase().trim()) {
+          return res.status(403).json({
+            message: `Access denied. You are not authorized to access sales data for "${req.query.state}".`,
+          });
+        }
+      }
+    }
+
     const authFilter = await getManagerAuthorizedBusinessQuery(req.user);
 
     // Filter by query parameters if provided
     const queryFilter = { ...authFilter };
-    if (req.query.state) queryFilter.state = req.query.state.trim();
-    if (req.query.city) queryFilter.city = req.query.city.trim();
-    if (req.query.category) queryFilter.category = req.query.category.trim();
+    if (req.query.state && req.query.state !== "All") queryFilter.state = req.query.state.trim();
+    if (req.query.city && req.query.city !== "All") queryFilter.city = req.query.city.trim();
+    if (req.query.category && req.query.category !== "All") queryFilter.category = req.query.category.trim();
 
     // Fetch authorized businesses
     const businesses = await SalesBusiness.find(queryFilter);
@@ -277,15 +317,22 @@ exports.getSalesDashboard = async (req, res) => {
       .limit(10)
       .populate("business", "name code category state city");
 
+    const assignedCity = userDoc?.assignedCity || uniqueCities[0] || "Ranchi";
+    const assignedState = userDoc?.assignedState || uniqueStates[0] || "Jharkhand";
+
     return res.json({
       managerInfo: {
         name: req.user.name,
         email: req.user.email,
         role: req.user.role,
-        assignedStates: uniqueStates,
-        assignedCities: uniqueCities,
-        primaryState: uniqueStates[0] || "Jharkhand",
-        primaryCity: uniqueCities[0] || "Ranchi",
+        assignedStates: userDoc?.assignedStates?.length
+          ? userDoc.assignedStates
+          : (userDoc?.assignedState ? [userDoc.assignedState] : (uniqueStates.length ? uniqueStates : [assignedState])),
+        assignedCities: userDoc?.assignedCities?.length
+          ? userDoc.assignedCities
+          : (userDoc?.assignedCity ? [userDoc.assignedCity] : (uniqueCities.length ? uniqueCities : [assignedCity])),
+        primaryState: assignedState,
+        primaryCity: assignedCity,
       },
       selectedPeriod: {
         month: reqMonth,
@@ -327,12 +374,36 @@ exports.getSalesDashboard = async (req, res) => {
 // =========================================================================
 exports.getBusinesses = async (req, res) => {
   try {
+    // Cross-city authorization security check for managers
+    if (req.user.role === "manager") {
+      const userDoc = await User.findById(req.user._id);
+      const allowedCities = [userDoc?.assignedCity, ...(userDoc?.assignedCities || [])]
+        .filter(Boolean)
+        .map((c) => c.toLowerCase().trim());
+
+      if (req.query.city && req.query.city !== "All" && req.query.city.trim() !== "") {
+        if (!allowedCities.includes(req.query.city.toLowerCase().trim())) {
+          return res.status(403).json({
+            message: `Access denied. You are not authorized to view businesses in "${req.query.city}".`,
+          });
+        }
+      }
+
+      if (req.query.state && req.query.state !== "All" && userDoc?.assignedState) {
+        if (req.query.state.toLowerCase().trim() !== userDoc.assignedState.toLowerCase().trim()) {
+          return res.status(403).json({
+            message: `Access denied. You are not authorized to view businesses in "${req.query.state}".`,
+          });
+        }
+      }
+    }
+
     const authFilter = await getManagerAuthorizedBusinessQuery(req.user);
     const filter = { ...authFilter };
 
-    if (req.query.state) filter.state = req.query.state.trim();
-    if (req.query.city) filter.city = req.query.city.trim();
-    if (req.query.category) filter.category = req.query.category.trim();
+    if (req.query.state && req.query.state !== "All") filter.state = req.query.state.trim();
+    if (req.query.city && req.query.city !== "All") filter.city = req.query.city.trim();
+    if (req.query.category && req.query.category !== "All") filter.category = req.query.category.trim();
     if (req.query.search) {
       filter.$or = [
         { name: { $regex: req.query.search.trim(), $options: "i" } },
@@ -1049,6 +1120,29 @@ exports.downloadTemplate = async (req, res) => {
  */
 exports.exportSalesExcel = async (req, res) => {
   try {
+    if (req.user.role === "manager") {
+      const userDoc = await User.findById(req.user._id);
+      const allowedCities = [userDoc?.assignedCity, ...(userDoc?.assignedCities || [])]
+        .filter(Boolean)
+        .map((c) => c.toLowerCase().trim());
+
+      if (req.query.city && req.query.city !== "All" && req.query.city.trim() !== "") {
+        if (!allowedCities.includes(req.query.city.toLowerCase().trim())) {
+          return res.status(403).json({
+            message: `Access denied. You are not authorized to export sales data for "${req.query.city}".`,
+          });
+        }
+      }
+
+      if (req.query.state && req.query.state !== "All" && userDoc?.assignedState) {
+        if (req.query.state.toLowerCase().trim() !== userDoc.assignedState.toLowerCase().trim()) {
+          return res.status(403).json({
+            message: `Access denied. You are not authorized to export sales data for "${req.query.state}".`,
+          });
+        }
+      }
+    }
+
     const authFilter = await getManagerAuthorizedBusinessQuery(req.user);
     const businesses = await SalesBusiness.find(authFilter);
     const businessIds = businesses.map((b) => b._id);
@@ -1056,8 +1150,8 @@ exports.exportSalesExcel = async (req, res) => {
     const filter = { business: { $in: businessIds } };
     if (req.query.year) filter.year = parseInt(req.query.year, 10);
     if (req.query.month) filter.month = parseInt(req.query.month, 10);
-    if (req.query.city) filter.city = req.query.city.trim();
-    if (req.query.state) filter.state = req.query.state.trim();
+    if (req.query.city && req.query.city !== "All") filter.city = req.query.city.trim();
+    if (req.query.state && req.query.state !== "All") filter.state = req.query.state.trim();
 
     const records = await SalesRecord.find(filter)
       .sort({ state: 1, city: 1, year: -1, month: -1 })
@@ -1113,19 +1207,71 @@ exports.getImportHistory = async (req, res) => {
 };
 
 /**
- * Helper to fetch distinct states and cities available to the user
+ * Helper to fetch distinct states and cities available, combining dynamic SalesLocations and businesses
  */
 exports.getLocations = async (req, res) => {
   try {
-    const authFilter = await getManagerAuthorizedBusinessQuery(req.user);
-    const businesses = await SalesBusiness.find(authFilter);
+    const dbLocations = await SalesLocation.find({}).sort({ state: 1, city: 1 });
+    const businesses = await SalesBusiness.find({});
 
-    const states = [...new Set(businesses.map((b) => b.state))];
-    const cities = [...new Set(businesses.map((b) => b.city))];
+    const locMap = new Map();
+    dbLocations.forEach((l) => {
+      locMap.set(`${l.city.trim()}___${l.state.trim()}`, {
+        city: l.city.trim(),
+        state: l.state.trim(),
+        isDefault: l.isDefault || false,
+      });
+    });
 
-    return res.json({ states, cities });
+    businesses.forEach((b) => {
+      if (b.city && b.state) {
+        const key = `${b.city.trim()}___${b.state.trim()}`;
+        if (!locMap.has(key)) {
+          locMap.set(key, {
+            city: b.city.trim(),
+            state: b.state.trim(),
+            isDefault: false,
+          });
+        }
+      }
+    });
+
+    const locations = Array.from(locMap.values());
+    const states = [...new Set(locations.map((l) => l.state))].sort();
+    const cities = [...new Set(locations.map((l) => l.city))].sort();
+
+    return res.json({ locations, states, cities });
   } catch (error) {
     console.error("Locations Error:", error);
     return res.status(500).json({ message: "Failed to fetch locations." });
+  }
+};
+
+/**
+ * Admin: Dynamically adds a new state and city location without changing source code
+ */
+exports.createLocation = async (req, res) => {
+  try {
+    const { city, state } = req.body;
+    if (!city || !state) {
+      return res.status(400).json({ message: "Both City and State are required." });
+    }
+
+    const trimCity = city.trim();
+    const trimState = state.trim();
+
+    const location = await SalesLocation.findOneAndUpdate(
+      { city: new RegExp(`^${trimCity}$`, "i"), state: new RegExp(`^${trimState}$`, "i") },
+      { city: trimCity, state: trimState, createdBy: req.user._id, isDefault: false },
+      { upsert: true, new: true }
+    );
+
+    return res.status(201).json({
+      message: `Location "${trimCity}, ${trimState}" added successfully.`,
+      location,
+    });
+  } catch (error) {
+    console.error("Create Location Error:", error);
+    return res.status(500).json({ message: "Failed to save location." });
   }
 };

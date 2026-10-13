@@ -3,6 +3,8 @@ const bcrypt = require("bcryptjs");
 const Notification = require("../models/Notification");
 const ActivityLog = require("../models/ActivityLog");
 const ClientProfile = require("../models/portal/ClientProfile");
+const SalesBusiness = require("../models/sales/SalesBusiness");
+const SalesLocation = require("../models/sales/SalesLocation");
 
 // Helper to normalize business type
 const normalizeBusinessType = (type) => {
@@ -711,24 +713,33 @@ exports.deleteClient = async (
 // GET ALL MANAGERS
 // Admin only
 // ==========================================
-exports.getAllManagers = async (
-  req,
-  res
-) => {
+exports.getAllManagers = async (req, res) => {
   try {
     const managers = await User.find({
       role: "manager",
     })
       .select("-password")
-      .sort({ name: 1 });
+      .populate("assignedBusinesses", "name code category state city")
+      .sort({ createdAt: -1 });
 
-    return res.json(managers);
-  } catch (error) {
-    console.error(
-      "Get Managers Error:",
-      error
+    const managerSummaries = await Promise.all(
+      managers.map(async (m) => {
+        const assignedBizCount = await SalesBusiness.countDocuments({
+          $or: [
+            { assignedManager: m._id },
+            { _id: { $in: m.assignedBusinesses || [] } },
+          ],
+        });
+
+        const mObj = m.toObject();
+        mObj.assignedBusinessesCount = assignedBizCount;
+        return mObj;
+      })
     );
 
+    return res.json(managerSummaries);
+  } catch (error) {
+    console.error("Get Managers Error:", error);
     return res.status(500).json({
       message: "Server Error",
     });
@@ -739,64 +750,136 @@ exports.getAllManagers = async (
 // CREATE MANAGER
 // Admin only
 // ==========================================
-exports.createManager = async (
-  req,
-  res
-) => {
+exports.createManager = async (req, res) => {
   try {
-    const {
+    let {
       name,
       email,
       password,
       phone,
+      assignedState,
+      assignedCity,
+      assignedLocation,
+      assignedBusinesses,
+      isActive,
     } = req.body;
 
-    if (
-      !name ||
-      !email ||
-      !password
-    ) {
+    if (!name || !name.trim()) {
       return res.status(400).json({
-        message:
-          "Name, email and password are required",
+        message: "Full Name is required.",
       });
     }
 
-    const normalizedEmail =
-      email.trim().toLowerCase();
+    if (!email || !email.trim()) {
+      return res.status(400).json({
+        message: "Email Address is required.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const emailRegex = /^\S+@\S+\.\S+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({
+        message: "Please provide a valid email address.",
+      });
+    }
+
+    // Password validation or auto-generation
+    let finalPassword = password ? String(password).trim() : "";
+    if (finalPassword && finalPassword.length < 6) {
+      return res.status(400).json({
+        message: "Password must be at least 6 characters.",
+      });
+    }
+    if (!finalPassword) {
+      finalPassword = `Mgr@${Math.floor(100000 + Math.random() * 900000)}`;
+    }
 
     // Check duplicate email
-    const existingUser =
-      await User.findOne({
-        email: normalizedEmail,
-      });
+    const existingUser = await User.findOne({
+      email: normalizedEmail,
+    });
 
     if (existingUser) {
       return res.status(400).json({
-        message:
-          "A user with this email already exists",
+        message: "A user with this email address already exists.",
       });
     }
 
-    // Hash password
-    const hashedPassword =
-      await bcrypt.hash(
-        password,
-        10
-      );
+    // Parse location if provided as "City, State"
+    if (assignedLocation && !assignedCity) {
+      const parts = assignedLocation.split(",");
+      if (parts.length >= 2) {
+        assignedCity = parts[0].trim();
+        if (!assignedState) assignedState = parts[1].trim();
+      } else {
+        assignedCity = assignedLocation.trim();
+      }
+    }
 
-    const manager =
-      await User.create({
-        name: name.trim(),
-        email: normalizedEmail,
-        password: hashedPassword,
-        phone: phone
-          ? phone.trim()
-          : "",
-        role: "manager",
-        isVerified: true,
-        isActive: true,
+    if (!assignedCity || !assignedCity.trim()) {
+      return res.status(400).json({
+        message: "Please select or provide an Assigned City / Location.",
       });
+    }
+
+    const trimmedCity = assignedCity.trim();
+    let trimmedState = assignedState ? assignedState.trim() : "";
+
+    // If state wasn't selected, auto-resolve from SalesLocation or SalesBusiness
+    if (!trimmedState) {
+      const locMatch = await SalesLocation.findOne({
+        city: new RegExp(`^${trimmedCity}$`, "i"),
+      });
+      if (locMatch) {
+        trimmedState = locMatch.state;
+      } else {
+        const bizMatch = await SalesBusiness.findOne({
+          city: new RegExp(`^${trimmedCity}$`, "i"),
+        });
+        if (bizMatch) trimmedState = bizMatch.state;
+      }
+    }
+
+    if (!trimmedState) {
+      return res.status(400).json({
+        message: `Please select the state corresponding to "${trimmedCity}".`,
+      });
+    }
+
+    // Persist to SalesLocation dynamically if not already present
+    await SalesLocation.findOneAndUpdate(
+      { city: new RegExp(`^${trimmedCity}$`, "i"), state: new RegExp(`^${trimmedState}$`, "i") },
+      { city: trimmedCity, state: trimmedState },
+      { upsert: true, new: true }
+    );
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(finalPassword, 10);
+
+    // Create manager
+    const manager = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+      phone: phone ? phone.trim() : "",
+      role: "manager",
+      assignedState: trimmedState,
+      assignedCity: trimmedCity,
+      assignedStates: [trimmedState],
+      assignedCities: [trimmedCity],
+      assignedBusinesses: Array.isArray(assignedBusinesses) ? assignedBusinesses : [],
+      isVerified: true,
+      isActive: isActive !== undefined ? Boolean(isActive) : true,
+    });
+
+    // Link assigned businesses if provided
+    if (Array.isArray(assignedBusinesses) && assignedBusinesses.length > 0) {
+      await SalesBusiness.updateMany(
+        { _id: { $in: assignedBusinesses } },
+        { assignedManager: manager._id }
+      );
+    }
 
     // Activity log
     await ActivityLog.create({
@@ -804,30 +887,200 @@ exports.createManager = async (
       action: "CREATE_MANAGER",
       entityType: "User",
       entityId: manager._id,
-      description:
-        `Created manager "${manager.name}".`,
+      description: `Created manager "${manager.name}" assigned to ${trimmedCity}, ${trimmedState}.`,
     });
 
-    // Remove password from response
-    const managerResponse =
-      await User.findById(
-        manager._id
-      ).select("-password");
+    const managerResponse = await User.findById(manager._id)
+      .select("-password")
+      .populate("assignedBusinesses", "name code category state city");
+
+    const assignedBizCount = await SalesBusiness.countDocuments({
+      $or: [
+        { assignedManager: manager._id },
+        { _id: { $in: manager.assignedBusinesses || [] } },
+      ],
+    });
+
+    const respObj = managerResponse.toObject();
+    respObj.assignedBusinessesCount = assignedBizCount;
 
     return res.status(201).json({
-      message:
-        "Manager created successfully",
-      manager: managerResponse,
+      message: `Manager "${manager.name}" created successfully with location assignment ${trimmedCity}, ${trimmedState}.`,
+      manager: respObj,
     });
   } catch (error) {
-    console.error(
-      "Create Manager Error:",
-      error
-    );
-
+    console.error("Create Manager Error:", error);
     return res.status(500).json({
       message: "Server Error",
     });
+  }
+};
+
+// ==========================================
+// UPDATE MANAGER LOCATION & ASSIGNMENTS
+// Admin only
+// ==========================================
+exports.updateManagerLocation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    let {
+      assignedState,
+      assignedCity,
+      assignedLocation,
+      assignedBusinesses,
+      name,
+      phone,
+      isActive,
+    } = req.body;
+
+    const manager = await User.findOne({ _id: id, role: "manager" });
+    if (!manager) {
+      return res.status(404).json({ message: "Manager not found" });
+    }
+
+    if (name) manager.name = name.trim();
+    if (phone !== undefined) manager.phone = phone.trim();
+    if (isActive !== undefined) manager.isActive = Boolean(isActive);
+
+    // Parse location if provided as "City, State"
+    if (assignedLocation && !assignedCity) {
+      const parts = assignedLocation.split(",");
+      if (parts.length >= 2) {
+        assignedCity = parts[0].trim();
+        if (!assignedState) assignedState = parts[1].trim();
+      } else {
+        assignedCity = assignedLocation.trim();
+      }
+    }
+
+    if (assignedCity) {
+      const trimmedCity = assignedCity.trim();
+      let trimmedState = assignedState ? assignedState.trim() : "";
+
+      if (!trimmedState) {
+        const locMatch = await SalesLocation.findOne({
+          city: new RegExp(`^${trimmedCity}$`, "i"),
+        });
+        if (locMatch) {
+          trimmedState = locMatch.state;
+        } else {
+          const bizMatch = await SalesBusiness.findOne({
+            city: new RegExp(`^${trimmedCity}$`, "i"),
+          });
+          if (bizMatch) trimmedState = bizMatch.state;
+        }
+      }
+
+      if (!trimmedState) {
+        return res.status(400).json({
+          message: `Please select the state corresponding to "${trimmedCity}".`,
+        });
+      }
+
+      manager.assignedCity = trimmedCity;
+      manager.assignedState = trimmedState;
+      manager.assignedCities = [trimmedCity];
+      manager.assignedStates = [trimmedState];
+
+      // Upsert location dynamically
+      await SalesLocation.findOneAndUpdate(
+        { city: new RegExp(`^${trimmedCity}$`, "i"), state: new RegExp(`^${trimmedState}$`, "i") },
+        { city: trimmedCity, state: trimmedState },
+        { upsert: true, new: true }
+      );
+    }
+
+    if (Array.isArray(assignedBusinesses)) {
+      // Remove manager from unassigned businesses
+      await SalesBusiness.updateMany(
+        { assignedManager: manager._id, _id: { $nin: assignedBusinesses } },
+        { assignedManager: null }
+      );
+      // Link newly assigned businesses
+      await SalesBusiness.updateMany(
+        { _id: { $in: assignedBusinesses } },
+        { assignedManager: manager._id }
+      );
+      manager.assignedBusinesses = assignedBusinesses;
+    }
+
+    await manager.save();
+
+    await ActivityLog.create({
+      user: req.user.id,
+      action: "UPDATE_MANAGER_LOCATION",
+      entityType: "User",
+      entityId: manager._id,
+      description: `Updated manager "${manager.name}" location to ${manager.assignedCity}, ${manager.assignedState}.`,
+    });
+
+    const updatedManager = await User.findById(manager._id)
+      .select("-password")
+      .populate("assignedBusinesses", "name code category state city");
+
+    const assignedBizCount = await SalesBusiness.countDocuments({
+      $or: [
+        { assignedManager: manager._id },
+        { _id: { $in: manager.assignedBusinesses || [] } },
+      ],
+    });
+
+    const mObj = updatedManager.toObject();
+    mObj.assignedBusinessesCount = assignedBizCount;
+
+    return res.json({
+      message: `Manager "${manager.name}" updated successfully. Assigned to ${manager.assignedCity}, ${manager.assignedState}.`,
+      manager: mObj,
+    });
+  } catch (error) {
+    console.error("Update Manager Location Error:", error);
+    return res.status(500).json({ message: "Failed to update manager location" });
+  }
+};
+
+exports.updateManager = exports.updateManagerLocation;
+
+// ==========================================
+// TOGGLE MANAGER ACCOUNT STATUS (ACTIVE/INACTIVE)
+// Admin only
+// ==========================================
+exports.toggleManagerStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const manager = await User.findOne({ _id: id, role: "manager" });
+    if (!manager) {
+      return res.status(404).json({ message: "Manager not found" });
+    }
+
+    if (req.body && req.body.isActive !== undefined) {
+      manager.isActive = Boolean(req.body.isActive);
+    } else {
+      manager.isActive = !manager.isActive;
+    }
+
+    await manager.save();
+
+    await ActivityLog.create({
+      user: req.user.id,
+      action: "TOGGLE_MANAGER_STATUS",
+      entityType: "User",
+      entityId: manager._id,
+      description: `${manager.isActive ? "Activated" : "Deactivated"} manager account "${manager.name}".`,
+    });
+
+    return res.json({
+      message: `Manager "${manager.name}" is now ${manager.isActive ? "Active" : "Inactive"}.`,
+      isActive: manager.isActive,
+      manager: {
+        _id: manager._id,
+        name: manager.name,
+        email: manager.email,
+        isActive: manager.isActive,
+      },
+    });
+  } catch (error) {
+    console.error("Toggle Manager Status Error:", error);
+    return res.status(500).json({ message: "Failed to toggle manager status" });
   }
 };
 
