@@ -35,6 +35,7 @@ import AdminClientDetail from "./pages/admin/AdminClientDetail";
 import AdminDataModule from "./pages/admin/AdminDataModule";
 import Clients from "./pages/Clients";
 import Managers from "./pages/Managers";
+import AdminStateSalesView from "./components/sales/AdminStateSalesView";
 
 // Portal Collaboration & Project pages
 import Projects from "./pages/Projects";
@@ -277,6 +278,18 @@ const App = () => {
                         <RoleRoute allowedRoles={["admin"]}>
                             <AdminLayout>
                                 <AdminClientDetail />
+                            </AdminLayout>
+                        </RoleRoute>
+                    }
+                />
+
+                {/* State-Wise Sales & Excel Ingestion */}
+                <Route
+                    path="/admin/state-sales"
+                    element={
+                        <RoleRoute allowedRoles={["admin"]} loginPath="/admin/login">
+                            <AdminLayout>
+                                <AdminStateSalesView />
                             </AdminLayout>
                         </RoleRoute>
                     }

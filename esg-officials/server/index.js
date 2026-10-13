@@ -23,6 +23,7 @@ if (!process.env.RESEND_API_KEY) {
 
 const { ensureAdminAccount } = require("./utils/adminBootstrap");
 const { ensureManagerAccount } = require("./utils/managerBootstrap");
+const { ensureSalesData } = require("./utils/salesBootstrap");
 
 const authRoutes = require("./routes/auth");
 const projectRoutes = require("./routes/project");
@@ -38,6 +39,7 @@ const contactRoutes = require("./routes/contact");
 const bizRoutes = require("./routes/biz/index");
 const portalRoutes = require("./routes/portal");
 const adminRoutes = require("./routes/admin");
+const salesRoutes = require("./routes/sales");
 
 const app = express();
 
@@ -145,6 +147,7 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/biz/businesses", bizRoutes);
 app.use("/api/portal", portalRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/sales", salesRoutes);
 
 // ==========================================
 // 404 HANDLER
@@ -183,6 +186,7 @@ mongoose
         console.log("MongoDB connected → database: esg-official-clients");
         await ensureAdminAccount();
         await ensureManagerAccount();
+        await ensureSalesData();
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/`);

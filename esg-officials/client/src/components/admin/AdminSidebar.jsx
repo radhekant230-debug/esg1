@@ -39,6 +39,7 @@ export default function AdminSidebar({ isOpen, onClose }) {
     {
       title: "BUSINESS PERFORMANCE",
       items: [
+        { label: "State-Wise Sales & Excel", to: "/admin/state-sales", icon: FaChartLine },
         { label: "3. Sales & Revenue", to: "/admin/sales", icon: FaDollarSign },
         { label: "4. Advertising & Campaigns", to: "/admin/campaigns", icon: FaBullhorn },
         { label: "5. Leads & Enquiries", to: "/admin/leads", icon: FaUserFriends },

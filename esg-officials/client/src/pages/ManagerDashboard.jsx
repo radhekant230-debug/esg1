@@ -12,12 +12,17 @@ import {
     FaArrowRight,
     FaClock,
     FaUserTie,
+    FaChartLine,
+    FaFileExcel,
+    FaBuilding,
 } from "react-icons/fa";
+import StateSalesDashboardView from "../components/sales/StateSalesDashboardView";
 
 const ManagerDashboard = () => {
     const { user } = useContext(AuthContext);
     const navigate = useNavigate();
 
+    const [portalTab, setPortalTab] = useState("sales"); // "sales" | "projects"
     const [projects, setProjects] = useState([]);
     const [tasks, setTasks] = useState([]);
     const [approvals, setApprovals] = useState([]);
@@ -172,10 +177,49 @@ const ManagerDashboard = () => {
     }
 
     return (
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-7xl mx-auto space-y-6">
 
-            {/* HEADER */}
-            <div className="bg-black text-white rounded-2xl p-6 sm:p-8 mb-8 shadow-lg">
+            {/* TOP PORTAL NAVIGATION TABS */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-gray-200 shadow-xs">
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setPortalTab("sales")}
+                        className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center gap-2 cursor-pointer ${
+                            portalTab === "sales"
+                                ? "bg-gray-900 text-white shadow-md"
+                                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        }`}
+                    >
+                        <FaChartLine className="text-amber-400" />
+                        State-Wise Sales & Excel Portal
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setPortalTab("projects")}
+                        className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center gap-2 cursor-pointer ${
+                            portalTab === "projects"
+                                ? "bg-gray-900 text-white shadow-md"
+                                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        }`}
+                    >
+                        <FaProjectDiagram className="text-blue-400" />
+                        Projects & Collaboration
+                    </button>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-2 pr-2 text-xs font-mono text-gray-500">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Manager Active
+                </div>
+            </div>
+
+            {portalTab === "sales" ? (
+                <StateSalesDashboardView />
+            ) : (
+                <div className="space-y-8">
+                    {/* HEADER */}
+                    <div className="bg-black text-white rounded-2xl p-6 sm:p-8 shadow-lg">
 
                 <p className="text-gray-400 text-sm font-semibold mb-2">
                     MANAGER PORTAL
@@ -856,7 +900,8 @@ const ManagerDashboard = () => {
 
                 </div>
             </div>
-
+            </div>
+            )}
         </div>
     );
 };

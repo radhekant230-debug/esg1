@@ -53,6 +53,33 @@ const userSchema = new mongoose.Schema(
       default: null
     },
 
+    // Geographical assignments for State Sales Managers
+    assignedState: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    assignedCity: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    assignedStates: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
+
+    assignedCities: [
+      {
+        type: String,
+        trim: true
+      }
+    ],
+
     isVerified: {
       type: Boolean,
       default: false
