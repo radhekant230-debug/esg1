@@ -205,13 +205,16 @@ exports.loginUser = async (req, res) => {
 
     if (isBcrypt) {
       isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch && typeof password === "string" && password.trim() !== password) {
+        isMatch = await bcrypt.compare(password.trim(), user.password);
+      }
     } else {
       // Legacy plaintext password check
-      if (user.password === password) {
+      if (user.password === password || (typeof password === "string" && user.password === password.trim())) {
         isMatch = true;
         try {
           // Immediately upgrade legacy plaintext password to secure bcrypt hash
-          user.password = await bcrypt.hash(password, 10);
+          user.password = await bcrypt.hash(password.trim(), 10);
           await user.save();
           console.log(`[auth] Automatically migrated plaintext password to bcrypt for: ${user.email}`);
         } catch (hashErr) {

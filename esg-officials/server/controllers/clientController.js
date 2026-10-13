@@ -830,3 +830,53 @@ exports.createManager = async (
     });
   }
 };
+
+// ==========================================
+// RESET MANAGER PASSWORD
+// Admin only
+// ==========================================
+exports.resetManagerPassword = async (
+  req,
+  res
+) => {
+  try {
+    const { password } = req.body;
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    const manager = await User.findOne({
+      _id: req.params.id,
+      role: "manager",
+    });
+
+    if (!manager) {
+      return res.status(404).json({
+        message: "Manager not found",
+      });
+    }
+
+    manager.password = await bcrypt.hash(password, 10);
+    await manager.save();
+
+    await ActivityLog.create({
+      user: req.user.id,
+      action: "RESET_MANAGER_PASSWORD",
+      entityType: "User",
+      entityId: manager._id,
+      description: `Reset password for manager "${manager.name}".`,
+    });
+
+    return res.json({
+      message: `Password reset successfully for manager "${manager.name}"`,
+    });
+  } catch (error) {
+    console.error("Reset Manager Password Error:", error);
+    return res.status(500).json({
+      message: "Server Error",
+    });
+  }
+};

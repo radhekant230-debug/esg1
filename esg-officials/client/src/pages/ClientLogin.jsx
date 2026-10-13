@@ -24,7 +24,7 @@ const ClientLogin = () => {
 
         try {
             if (!showOTP) {
-                const data = await login(loginId, password, "client");
+                const data = await login(loginId.trim(), password, "client");
 
                 if (data.role === "client") {
                     navigate("/client/dashboard");

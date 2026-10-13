@@ -22,6 +22,7 @@ if (!process.env.RESEND_API_KEY) {
 }
 
 const { ensureAdminAccount } = require("./utils/adminBootstrap");
+const { ensureManagerAccount } = require("./utils/managerBootstrap");
 
 const authRoutes = require("./routes/auth");
 const projectRoutes = require("./routes/project");
@@ -181,6 +182,7 @@ mongoose
     .then(async () => {
         console.log("MongoDB connected → database: esg-official-clients");
         await ensureAdminAccount();
+        await ensureManagerAccount();
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/`);

@@ -19,7 +19,7 @@ const ManagerLogin = () => {
         setError("");
 
         try {
-            const data = await login(loginId, password, "manager");
+            const data = await login(loginId.trim(), password, "manager");
 
             if (data.role !== "manager" && data.role !== "admin") {
                 logout();

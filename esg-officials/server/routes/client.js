@@ -17,6 +17,7 @@ const {
     deleteClient,
     getAllManagers,
     createManager,
+    resetManagerPassword,
 } = require("../controllers/clientController");
 
 // ==========================================
@@ -38,6 +39,10 @@ router.get("/managers/all", protect, admin, getAllManagers);
 // Create manager
 // Admin only
 router.post("/managers", protect, admin, createManager);
+
+// Reset manager password
+// Admin only
+router.put("/managers/:id/reset-password", protect, admin, resetManagerPassword);
 
 // ==========================================
 // SINGLE CLIENT ROUTES
