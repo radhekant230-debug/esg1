@@ -24,6 +24,8 @@ if (!process.env.RESEND_API_KEY) {
 const { ensureAdminAccount } = require("./utils/adminBootstrap");
 const { ensureManagerAccount } = require("./utils/managerBootstrap");
 const { ensureSalesData } = require("./utils/salesBootstrap");
+const { ensureRiskData } = require("./utils/riskBootstrap");
+const { startAutoApprovalScheduler } = require("./services/autoApprovalScheduler");
 
 const authRoutes = require("./routes/auth");
 const projectRoutes = require("./routes/project");
@@ -40,6 +42,7 @@ const bizRoutes = require("./routes/biz/index");
 const portalRoutes = require("./routes/portal");
 const adminRoutes = require("./routes/admin");
 const salesRoutes = require("./routes/sales");
+const riskRoutes = require("./routes/risk");
 
 const app = express();
 
@@ -148,6 +151,7 @@ app.use("/api/biz/businesses", bizRoutes);
 app.use("/api/portal", portalRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/sales", salesRoutes);
+app.use("/api/risks", riskRoutes);
 
 // ==========================================
 // 404 HANDLER
@@ -187,6 +191,8 @@ mongoose
         await ensureAdminAccount();
         await ensureManagerAccount();
         await ensureSalesData();
+        await ensureRiskData();
+        startAutoApprovalScheduler();
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
             console.log(`Health check: http://localhost:${PORT}/`);

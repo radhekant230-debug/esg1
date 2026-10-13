@@ -47,6 +47,10 @@ import CreateTask from "./pages/CreateTask";
 import TaskDetails from "./pages/TaskDetails";
 import EditTask from "./pages/EditTask";
 import Approvals from "./pages/Approvals";
+import ApprovalsCenter from "./pages/ApprovalsCenter";
+import RiskManagement from "./pages/RiskManagement";
+import CalendarPage from "./pages/CalendarPage";
+import ResourceVault from "./pages/ResourceVault";
 import Documents from "./pages/Documents";
 import Messages from "./pages/Messages";
 import Notifications from "./pages/Notifications";
@@ -241,9 +245,9 @@ const App = () => {
                     path="/admin/dashboard"
                     element={
                         <RoleRoute allowedRoles={["admin"]} loginPath="/admin/login">
-                            <PortalLayout>
+                            <AdminLayout>
                                 <AdminDashboard />
-                            </PortalLayout>
+                            </AdminLayout>
                         </RoleRoute>
                     }
                 />
@@ -436,13 +440,61 @@ const App = () => {
                     }
                 />
 
-                {/* 11. Content Approvals */}
+                {/* Risk Management System */}
+                <Route
+                    path="/admin/risks"
+                    element={
+                        <RoleRoute allowedRoles={["admin", "manager"]}>
+                            <AdminLayout>
+                                <RiskManagement />
+                            </AdminLayout>
+                        </RoleRoute>
+                    }
+                />
+
+                {/* Calendar & Scheduling */}
+                <Route
+                    path="/admin/calendar"
+                    element={
+                        <RoleRoute allowedRoles={["admin", "manager"]}>
+                            <AdminLayout>
+                                <CalendarPage />
+                            </AdminLayout>
+                        </RoleRoute>
+                    }
+                />
+
+                {/* Tasks & Follow-ups */}
+                <Route
+                    path="/admin/tasks"
+                    element={
+                        <RoleRoute allowedRoles={["admin", "manager"]}>
+                            <AdminLayout>
+                                <Tasks />
+                            </AdminLayout>
+                        </RoleRoute>
+                    }
+                />
+
+                {/* 11. Approvals Center */}
                 <Route
                     path="/admin/approvals"
                     element={
-                        <RoleRoute allowedRoles={["admin"]}>
+                        <RoleRoute allowedRoles={["admin", "manager"]}>
                             <AdminLayout>
-                                <Approvals />
+                                <ApprovalsCenter />
+                            </AdminLayout>
+                        </RoleRoute>
+                    }
+                />
+
+                {/* Resource Vault */}
+                <Route
+                    path="/admin/vault"
+                    element={
+                        <RoleRoute allowedRoles={["admin", "manager"]}>
+                            <AdminLayout>
+                                <ResourceVault />
                             </AdminLayout>
                         </RoleRoute>
                     }
@@ -645,13 +697,43 @@ const App = () => {
                     }
                 />
 
-                {/* Approvals, Documents, Messages, Notifications */}
+                {/* Risk Management, Calendar, Approvals, Vault, Documents, Messages, Notifications */}
+                <Route
+                    path="/risks"
+                    element={
+                        <ProtectedRoute>
+                            <PortalLayout>
+                                <RiskManagement />
+                            </PortalLayout>
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/calendar"
+                    element={
+                        <ProtectedRoute>
+                            <PortalLayout>
+                                <CalendarPage />
+                            </PortalLayout>
+                        </ProtectedRoute>
+                    }
+                />
                 <Route
                     path="/approvals"
                     element={
                         <ProtectedRoute>
                             <PortalLayout>
-                                <Approvals />
+                                <ApprovalsCenter />
+                            </PortalLayout>
+                        </ProtectedRoute>
+                    }
+                />
+                <Route
+                    path="/vault"
+                    element={
+                        <ProtectedRoute>
+                            <PortalLayout>
+                                <ResourceVault />
                             </PortalLayout>
                         </ProtectedRoute>
                     }

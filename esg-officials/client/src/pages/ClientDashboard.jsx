@@ -26,6 +26,7 @@ import {
   FaExchangeAlt,
   FaExternalLinkAlt,
   FaDownload,
+  FaShieldAlt,
 } from "react-icons/fa";
 
 // Tab Components
@@ -42,6 +43,7 @@ import ResourceVaultTab from "../components/portal/ResourceVaultTab";
 import CommercialsInvoicesTab from "../components/portal/CommercialsInvoicesTab";
 import ClientProfileSettingsTab from "../components/portal/ClientProfileSettingsTab";
 import PortalAdminDataEntryModal from "../components/portal/PortalAdminDataEntryModal";
+import RiskMitigationTab from "../components/portal/RiskMitigationTab";
 
 export default function ClientDashboard() {
   const { user, isAdmin, isManager } = useContext(AuthContext);
@@ -205,6 +207,12 @@ export default function ClientDashboard() {
     { id: "reports", label: "Reports & Insights", icon: FaFileAlt, serviceKey: "reports" },
     { id: "vault", label: "Brand Vault", icon: FaFolder, serviceKey: "vault" },
     { id: "invoices", label: "Commercials & Invoices", icon: FaFileInvoiceDollar, serviceKey: "invoices" },
+    {
+      id: "risks",
+      label: "Risk & Mitigation Approvals",
+      icon: FaShieldAlt,
+      serviceKey: "risks",
+    },
     { id: "settings", label: "Profile & Settings", icon: FaCog, serviceKey: "settings" },
   ];
 
@@ -215,6 +223,7 @@ export default function ClientDashboard() {
         (t) =>
           t.id === "overview" ||
           t.id === "settings" ||
+          t.id === "risks" ||
           purchasedServices.includes(t.serviceKey) ||
           purchasedServices.includes(t.id)
       );
@@ -460,6 +469,10 @@ export default function ClientDashboard() {
 
         {activeTab === "invoices" && (
           <CommercialsInvoicesTab invoicesData={invoicesData} />
+        )}
+
+        {activeTab === "risks" && (
+          <RiskMitigationTab clientId={selectedClientId || clientUser?._id} />
         )}
 
         {activeTab === "settings" && (
