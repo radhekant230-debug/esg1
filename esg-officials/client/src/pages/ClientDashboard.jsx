@@ -6,6 +6,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 // Icons
 import {
   FaChartPie,
+  FaChartLine,
   FaDollarSign,
   FaBullhorn,
   FaShareAlt,
@@ -27,11 +28,13 @@ import {
   FaExternalLinkAlt,
   FaDownload,
   FaShieldAlt,
+  FaCalendarAlt,
 } from "react-icons/fa";
 
 // Tab Components
 import ExecutiveOverviewTab from "../components/portal/ExecutiveOverviewTab";
 import SalesPerformanceTab from "../components/portal/SalesPerformanceTab";
+import ClientMonthlySales from "../components/portal/ClientMonthlySales";
 import AdvertisingTab from "../components/portal/AdvertisingTab";
 import SocialMediaTab from "../components/portal/SocialMediaTab";
 import LocalMarketingTab from "../components/portal/LocalMarketingTab";
@@ -44,6 +47,8 @@ import CommercialsInvoicesTab from "../components/portal/CommercialsInvoicesTab"
 import ClientProfileSettingsTab from "../components/portal/ClientProfileSettingsTab";
 import PortalAdminDataEntryModal from "../components/portal/PortalAdminDataEntryModal";
 import RiskMitigationTab from "../components/portal/RiskMitigationTab";
+import ClientScheduleTab from "../components/planner/ClientScheduleTab";
+import usePortalSync from "../hooks/usePortalSync";
 
 export default function ClientDashboard() {
   const { user, isAdmin, isManager } = useContext(AuthContext);
@@ -64,6 +69,7 @@ export default function ClientDashboard() {
   const [clientUser, setClientUser] = useState(null);
   const [overviewData, setOverviewData] = useState(null);
   const [salesData, setSalesData] = useState(null);
+  const [salesRefreshKey, setSalesRefreshKey] = useState(0);
   const [campaignData, setCampaignData] = useState(null);
   const [socialData, setSocialData] = useState(null);
   const [gbpData, setGbpData] = useState(null);
@@ -117,6 +123,24 @@ export default function ClientDashboard() {
       console.error("Error fetching client selector:", err);
     }
   };
+
+  // Refetch only the sales-driven views (no full-page spinner) after a manager upload
+  const refreshSalesViews = async () => {
+    const clientQuery = selectedClientId ? `?clientId=${selectedClientId}` : "";
+    const [overRes, salesRes] = await Promise.allSettled([
+      api.get(`/portal/overview${clientQuery}`),
+      api.get(`/portal/sales${clientQuery}`),
+    ]);
+    if (overRes.status === "fulfilled") setOverviewData(overRes.value.data);
+    if (salesRes.status === "fulfilled") setSalesData(salesRes.value.data);
+    setSalesRefreshKey((k) => k + 1); // monthly analytics refetches for its selected period
+  };
+
+  const sync = usePortalSync({
+    clientId: isAdmin || isManager ? selectedClientId : "",
+    enabled: Boolean(user) && (!(isAdmin || isManager) || Boolean(selectedClientId)),
+    onChange: refreshSalesViews,
+  });
 
   const fetchAllPortalData = async () => {
     try {
@@ -191,6 +215,7 @@ export default function ClientDashboard() {
   // Tab definitions
   const tabs = [
     { id: "overview", label: "Executive Overview", icon: FaChartPie, serviceKey: "overview" },
+    { id: "analytics", label: "Monthly Analytics", icon: FaChartLine, serviceKey: "analytics" },
     { id: "sales", label: "Sales & Revenue", icon: FaDollarSign, serviceKey: "sales" },
     { id: "advertising", label: "Advertising", icon: FaBullhorn, serviceKey: "advertising" },
     { id: "social", label: "Social Media", icon: FaShareAlt, serviceKey: "social" },
@@ -203,6 +228,7 @@ export default function ClientDashboard() {
       serviceKey: "content_calendar",
       badge: contentData?.counts?.pendingApproval || 0,
     },
+    { id: "schedule", label: "Schedule & Calendar", icon: FaCalendarAlt, serviceKey: "schedule" },
     { id: "workspace", label: "Work in Progress", icon: FaTasks, serviceKey: "workspace" },
     { id: "reports", label: "Reports & Insights", icon: FaFileAlt, serviceKey: "reports" },
     { id: "vault", label: "Brand Vault", icon: FaFolder, serviceKey: "vault" },
@@ -222,8 +248,10 @@ export default function ClientDashboard() {
     : tabs.filter(
         (t) =>
           t.id === "overview" ||
+          t.id === "analytics" || // own sales analytics (server-scoped; empty state when nothing is linked)
           t.id === "settings" ||
           t.id === "risks" ||
+          t.id === "schedule" ||
           purchasedServices.includes(t.serviceKey) ||
           purchasedServices.includes(t.id)
       );
@@ -431,8 +459,28 @@ export default function ClientDashboard() {
           />
         )}
 
+        {sync.updatedNotice && (
+          <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <span>
+              <strong>New sales data from your account manager.</strong> Your dashboard was refreshed automatically
+              {sync.lastUpdatedLabel ? ` (last update ${sync.lastUpdatedLabel})` : ""}.
+            </span>
+            <button type="button" onClick={sync.dismiss} className="text-emerald-800 hover:text-emerald-950 font-bold" aria-label="Dismiss">
+              ×
+            </button>
+          </div>
+        )}
+
+        {activeTab === "analytics" && (
+          <ClientMonthlySales clientId={isAdmin || isManager ? selectedClientId : ""} refreshKey={salesRefreshKey} />
+        )}
+
         {activeTab === "sales" && (
-          <SalesPerformanceTab salesData={salesData} businessType={businessType} />
+          <SalesPerformanceTab
+            salesData={salesData}
+            businessType={businessType}
+            onOpenAnalytics={() => handleTabChange("analytics")}
+          />
         )}
 
         {activeTab === "advertising" && (
@@ -453,6 +501,10 @@ export default function ClientDashboard() {
 
         {activeTab === "content_calendar" && (
           <ContentApprovalsTab contentData={contentData} onRefresh={fetchAllPortalData} />
+        )}
+
+        {activeTab === "schedule" && (
+          <ClientScheduleTab clientId={isAdmin || isManager ? selectedClientId || clientUser?._id : ""} />
         )}
 
         {activeTab === "workspace" && (

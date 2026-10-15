@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: esg1
+    env: node
+    plan: free
+    rootDir: esg-officials/server
+    buildCommand: npm install
+    startCommand: npm start
+    # Readiness: 200 only when MongoDB is connected. A deploy whose MONGO_URI does not
+    # work never becomes healthy, so Render keeps the previous instance serving traffic.
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      # Secrets: set the values in the Render dashboard (Environment tab), never in this file.
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: PORT
+        value: 5000

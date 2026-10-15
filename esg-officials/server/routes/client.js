@@ -5,6 +5,7 @@ const router = express.Router();
 const {
     protect,
     admin,
+    adminOrManager,
 } = require("../middlewares/auth");
 
 const {
@@ -21,7 +22,16 @@ const {
     updateManager,
     toggleManagerStatus,
     resetManagerPassword,
+    getWhatsAppContacts,
+    updateClientWhatsApp,
 } = require("../controllers/clientController");
+
+// ==========================================
+// CLIENT WHATSAPP CONTACTS (MANAGER & ADMIN)
+// ==========================================
+router.get("/whatsapp/contacts", protect, adminOrManager, getWhatsAppContacts);
+router.put("/:id/whatsapp", protect, adminOrManager, updateClientWhatsApp);
+router.patch("/:id/whatsapp", protect, adminOrManager, updateClientWhatsApp);
 
 // ==========================================
 // CLIENT MANAGEMENT

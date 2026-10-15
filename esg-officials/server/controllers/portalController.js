@@ -12,6 +12,7 @@ const ContentCalendarItem = require("../models/portal/ContentCalendarItem");
 const ClientReport = require("../models/portal/ClientReport");
 const ClientInvoice = require("../models/portal/ClientInvoice");
 const ClientVaultDocument = require("../models/portal/ClientVaultDocument");
+const { buildClientSalesFeed, getClientSyncStamp } = require("../services/portal/clientSalesFeed");
 
 // Helper to determine target client ID with strict authorization
 const getTargetClientId = (req) => {
@@ -141,8 +142,10 @@ exports.getExecutiveOverview = async (req, res) => {
 
     const profile = await ClientProfile.findOne({ client: clientId });
 
-    // Aggregate Sales
-    const salesRecords = await ClientSalesRecord.find({ client: clientId }).sort({ date: -1 });
+    // Aggregate Sales (manual entries + manager-imported records for this client's businesses)
+    const salesFeed = await buildClientSalesFeed(clientId);
+    const salesRecords = [...salesFeed.records].reverse();
+    const lastMonth = salesFeed.monthly[salesFeed.monthly.length - 1] || null;
     const totalSalesRevenue = salesRecords.reduce((acc, r) => acc + (r.totalRevenue || 0), 0);
     const totalOrders = salesRecords.reduce((acc, r) => acc + (r.ordersCount || 0), 0);
     const totalAdAttributedRev = salesRecords.reduce((acc, r) => acc + (r.adAttributedRevenue || 0), 0);
@@ -185,8 +188,9 @@ exports.getExecutiveOverview = async (req, res) => {
         value: totalSalesRevenue,
         formatted: `₹${totalSalesRevenue.toLocaleString("en-IN")}`,
         hasData: salesRecords.length > 0,
-        status: salesRecords.length > 0 ? "Verified" : "No data available",
-        changePct: salesRecords.length > 0 ? 14.8 : null,
+        status: salesRecords.length > 0 ? "Verified" : "No sales data available",
+        // Real month-over-month change from uploaded monthly data (null when not computable)
+        changePct: lastMonth && lastMonth.growth !== null ? lastMonth.growth : null,
         definition: "Total gross sales revenue generated across all channels during reporting period.",
       },
       advertisingSpend: {
@@ -224,7 +228,7 @@ exports.getExecutiveOverview = async (req, res) => {
         formatted: `${totalOrders}`,
         hasData: totalOrders > 0,
         status: totalOrders > 0 ? "Completed Transactions" : "No transactions logged",
-        changePct: totalOrders > 0 ? 11.2 : null,
+        changePct: null,
         definition: "Customer order count or table reservations recorded during the reporting cycle.",
       },
       websiteVisits: {
@@ -267,9 +271,15 @@ exports.getExecutiveOverview = async (req, res) => {
       },
     };
 
+    const latestDataUpdate = salesFeed.lastUpdatedAt;
+    const profileUpdate = profile?.lastReportUpdate || null;
     return res.json({
-      reportingPeriod: "October 2026",
-      lastUpdated: profile?.lastReportUpdate || new Date(),
+      reportingPeriod: lastMonth ? lastMonth.monthName : "Latest available data",
+      lastUpdated:
+        latestDataUpdate && (!profileUpdate || new Date(latestDataUpdate) > new Date(profileUpdate))
+          ? latestDataUpdate
+          : profileUpdate || new Date(),
+      latestMonth: lastMonth,
       metrics,
       businessType: profile?.businessType || "cafe_restaurant",
       servicesPurchased: profile?.servicesPurchased || [],
@@ -293,7 +303,10 @@ exports.getSalesPerformance = async (req, res) => {
     }
     if (!clientId) return res.status(404).json({ message: "Client not found." });
 
-    const records = await ClientSalesRecord.find({ client: clientId }).sort({ date: 1 });
+    // Manual portal entries + the manager's imported SalesRecords for this
+    // client's businesses (same documents the Manager Portal shows).
+    const feed = await buildClientSalesFeed(clientId);
+    const records = feed.records;
 
     // Category aggregation
     const categoryTotals = {};
@@ -307,12 +320,12 @@ exports.getSalesPerformance = async (req, res) => {
       totalOrders += rec.ordersCount || 0;
       totalReturnsAmount += rec.returnsAmount || 0;
 
-      rec.categoryBreakdown.forEach((cat) => {
+      (rec.categoryBreakdown || []).forEach((cat) => {
         if (!categoryTotals[cat.category]) categoryTotals[cat.category] = 0;
         categoryTotals[cat.category] += cat.amount || 0;
       });
 
-      rec.topProducts.forEach((prod) => {
+      (rec.topProducts || []).forEach((prod) => {
         if (!productTotals[prod.name]) {
           productTotals[prod.name] = { name: prod.name, category: prod.category, revenue: 0, units: 0 };
         }
@@ -333,8 +346,10 @@ exports.getSalesPerformance = async (req, res) => {
 
     const aov = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
 
-    // Grab latest industry specifics if available
-    const latestRecord = records[records.length - 1];
+    // Grab latest industry specifics if available (manual entries carry them)
+    const manualRecords = records.filter((r) => r.source !== "manager_import");
+    const latestRecord = manualRecords[manualRecords.length - 1];
+    const stamp = await getClientSyncStamp(clientId);
 
     return res.json({
       records,
@@ -347,6 +362,14 @@ exports.getSalesPerformance = async (req, res) => {
       },
       categories,
       topProducts,
+      // Manager-uploaded monthly data (per business) for this client
+      monthly: feed.monthly,
+      businesses: feed.businesses,
+      importedRecords: feed.importedRecords,
+      supersededManualRecords: feed.supersededManual,
+      lastUpdatedAt: feed.lastUpdatedAt,
+      lastUpdatedLabel: feed.lastUpdatedLabel,
+      syncVersion: stamp.version,
       industryDetails: {
         cafe: latestRecord?.cafeDetails || null,
         clothing: latestRecord?.clothingDetails || null,
@@ -911,6 +934,24 @@ exports.addInvoice = async (req, res) => {
 // ============================================================
 // 13. CLIENT SELECTOR (ADMIN / MANAGER)
 // ============================================================
+
+/**
+ * Lightweight change detector polled by the Client Portal (every ~30s and on
+ * focus). When the version changes, the dashboard refetches its data — so a
+ * manager's import shows up without the client re-uploading or reloading.
+ */
+exports.getSyncStatus = async (req, res) => {
+  try {
+    const clientId = getTargetClientId(req);
+    if (!clientId) return res.status(404).json({ message: "Client not found." });
+    const stamp = await getClientSyncStamp(clientId);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ clientId, ...stamp, syncStamp: stamp.version, checkedAt: new Date() });
+  } catch (error) {
+    console.error("Sync status error:", error);
+    return res.status(500).json({ message: "Failed to check for updates." });
+  }
+};
 
 exports.getAllClientsForSelector = async (req, res) => {
   try {

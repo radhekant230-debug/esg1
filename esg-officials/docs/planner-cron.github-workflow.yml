@@ -1,0 +1,23 @@
+# Triggers the reminder/escalation scheduler every 10 minutes so reminders are
+# sent even when the API host has gone to sleep (Render free plan).
+# Repository secrets required: PLANNER_API_URL (e.g. https://esg1.onrender.com)
+# and PLANNER_CRON_SECRET (same value as CRON_SECRET on the server).
+name: Planner reminders & escalations
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger planner tick
+        env:
+          API_URL: ${{ secrets.PLANNER_API_URL }}
+          CRON_SECRET: ${{ secrets.PLANNER_CRON_SECRET }}
+        run: |
+          # First call may take ~60s while a sleeping Render instance wakes up
+          curl --fail --show-error --silent --max-time 120 --retry 2 --retry-delay 20 \
+            -X POST "$API_URL/api/planner/cron/run" \
+            -H "X-Cron-Secret: $CRON_SECRET" -H "Content-Type: application/json" -d '{}'

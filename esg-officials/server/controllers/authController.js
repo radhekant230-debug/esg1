@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const OTP = require("../models/OTP");
 const bcrypt = require("bcryptjs");
+const { buildLoginQuery } = require("../utils/loginQuery");
 const { sendOTPEmail } = require("../utils/email");
 const jwt = require("jsonwebtoken");
 
@@ -127,6 +128,7 @@ exports.registerUser = async (req, res) => {
 // ==========================================
 // LOGIN
 // ==========================================
+
 exports.loginUser = async (req, res) => {
   const {
     email,
@@ -146,20 +148,7 @@ exports.loginUser = async (req, res) => {
       });
     }
 
-    let loginQuery;
-
-    if (rawId.includes("@")) {
-      loginQuery = {
-        email: rawId.toLowerCase(),
-      };
-    } else {
-      loginQuery = {
-        $or: [
-          { clientId: rawId },
-          { email: rawId.toLowerCase() },
-        ],
-      };
-    }
+    const loginQuery = buildLoginQuery(rawId);
 
     const user = await User.findOne(loginQuery);
 

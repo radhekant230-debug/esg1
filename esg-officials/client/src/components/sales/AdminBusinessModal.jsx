@@ -18,10 +18,20 @@ export default function AdminBusinessModal({ isOpen, onClose, onSuccess, initial
     address: "",
     monthlyTarget: 300000,
     assignedManager: "",
+    clientAccount: "",
     notes: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [clients, setClients] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    api
+      .get("/portal/clients-selector")
+      .then((r) => setClients(r.data?.clients || []))
+      .catch(() => setClients([]));
+  }, [isOpen]);
 
   useEffect(() => {
     if (initialBusiness) {
@@ -34,6 +44,7 @@ export default function AdminBusinessModal({ isOpen, onClose, onSuccess, initial
         address: initialBusiness.address || "",
         monthlyTarget: initialBusiness.monthlyTarget || 300000,
         assignedManager: initialBusiness.assignedManager?._id || initialBusiness.assignedManager || "",
+        clientAccount: initialBusiness.clientAccount?._id || initialBusiness.clientAccount || "",
         notes: initialBusiness.notes || "",
       });
     } else {
@@ -46,6 +57,7 @@ export default function AdminBusinessModal({ isOpen, onClose, onSuccess, initial
         address: "",
         monthlyTarget: 300000,
         assignedManager: "",
+        clientAccount: "",
         notes: "",
       });
     }
@@ -69,6 +81,7 @@ export default function AdminBusinessModal({ isOpen, onClose, onSuccess, initial
         ...formData,
         monthlyTarget: Number(formData.monthlyTarget) || 0,
         assignedManager: formData.assignedManager || null,
+        clientAccount: formData.clientAccount || null,
       };
 
       if (initialBusiness?._id) {
@@ -221,6 +234,25 @@ export default function AdminBusinessModal({ isOpen, onClose, onSuccess, initial
                 ))}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-gray-700 mb-1">Client portal account</label>
+            <select
+              value={formData.clientAccount}
+              onChange={(e) => setFormData({ ...formData, clientAccount: e.target.value })}
+              className="w-full p-2.5 bg-gray-50 border border-gray-300 rounded-lg text-gray-900 focus:ring-2 focus:ring-amber-500 cursor-pointer"
+            >
+              <option value="">Not linked (data visible to managers only)</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.businessName} — {c.email}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-500 mt-1">
+              Sales uploaded for this business appear automatically in this client's portal. Each business belongs to one client only.
+            </p>
           </div>
 
           <div>

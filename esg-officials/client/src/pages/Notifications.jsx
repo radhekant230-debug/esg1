@@ -5,6 +5,7 @@ import {
     FaTrash,
 } from "react-icons/fa";
 import api from "../utils/axios";
+import { Link } from "react-router-dom";
 
 const Notifications = () => {
     const [notifications, setNotifications] = useState([]);
@@ -273,6 +274,18 @@ const Notifications = () => {
                                                 </span>
 
                                                 <div className="flex items-center gap-2">
+
+                                                    {notification.link && notification.link.startsWith("/") && (
+                                                        <Link
+                                                            to={notification.link}
+                                                            onClick={() => {
+                                                                if (!notificationRead) markAsRead(notification._id);
+                                                            }}
+                                                            className="px-3 py-2 rounded-lg bg-gray-900 text-white hover:bg-black transition text-xs font-semibold"
+                                                        >
+                                                            Open
+                                                        </Link>
+                                                    )}
 
                                                     {!notificationRead && (
                                                         <button

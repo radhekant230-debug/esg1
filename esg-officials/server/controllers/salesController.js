@@ -4,6 +4,22 @@ const SalesRecord = require("../models/sales/SalesRecord");
 const SalesImportJob = require("../models/sales/SalesImportJob");
 const SalesLocation = require("../models/sales/SalesLocation");
 const User = require("../models/User");
+const { audit } = require("../services/audit");
+
+const FINANCIAL_FIELDS = ["totalSales", "salesBasis", "orders", "target", "discount", "cost", "expenses", "remarks"];
+const financialSnapshot = (r) => Object.fromEntries(FINANCIAL_FIELDS.map((f) => [f, r[f] === undefined ? null : r[f]]));
+
+/**
+ * Optional financial value: "" / null -> null (not recorded), else a non-negative number.
+ * Returns { value } or { error }.
+ */
+function optionalAmount(v, label) {
+  if (v === undefined) return { skip: true };
+  if (v === null || v === "") return { value: null };
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return { error: `${label} must be a non-negative number or left blank.` };
+  return { value: n };
+}
 
 // Month names helper
 const MONTH_NAMES = [
@@ -78,53 +94,20 @@ function parseMonthYear(val) {
   return null;
 }
 
-/**
- * Resolves a manager's authorized businesses filter strictly based on their assigned city/state
- */
-async function getManagerAuthorizedBusinessQuery(user) {
-  if (user.role === "admin") {
-    return {}; // Admin has access to all businesses
-  }
 
-  const userDoc = await User.findById(user._id);
-  const managerCity = userDoc?.assignedCity ? userDoc.assignedCity.trim() : null;
-  const rawCities = [managerCity, ...(userDoc?.assignedCities || [])].filter(Boolean);
-  const managerCities = [...new Set(rawCities.map((c) => c.trim()))];
-
-  const managerState = userDoc?.assignedState ? userDoc.assignedState.trim() : null;
-  const rawStates = [managerState, ...(userDoc?.assignedStates || [])].filter(Boolean);
-  const managerStates = [...new Set(rawStates.map((s) => s.trim()))];
-
-  const assignedBizIds = userDoc?.assignedBusinesses || [];
-
-  // If specific businesses are assigned, scope strictly to them (and their city if defined)
-  if (assignedBizIds.length > 0) {
-    const bizFilter = {
-      $or: [
-        { _id: { $in: assignedBizIds } },
-        { assignedManager: user._id },
-      ],
-    };
-    if (managerCities.length > 0) {
-      bizFilter.city = { $in: managerCities };
-    }
-    return bizFilter;
-  }
-
-  // Location assignment:
-  // If the manager is assigned to specific cities, restrict strictly to those cities
-  if (managerCities.length > 0) {
-    const cityFilter = { city: { $in: managerCities } };
-    if (managerStates.length > 0) {
-      cityFilter.state = { $in: managerStates };
-    }
-    return cityFilter;
-  } else if (managerStates.length > 0) {
-    return { state: { $in: managerStates } };
-  }
-
-  return { assignedManager: user._id };
+/** clientAccount must be an existing client user (or empty to unlink). */
+async function resolveClientAccount(value) {
+  if (value === undefined) return { skip: true };
+  if (value === null || value === "") return { value: null };
+  const mongoose = require("mongoose");
+  if (!mongoose.Types.ObjectId.isValid(value)) return { error: "Invalid client portal account." };
+  const client = await User.findOne({ _id: value, role: "client" }).select("_id");
+  if (!client) return { error: "The selected client portal account does not exist." };
+  return { value: client._id };
 }
+
+// Manager business scoping lives in services/salesAccess.js (shared with the planner)
+const { getManagerAuthorizedBusinessQuery } = require("../services/salesAccess");
 
 // =========================================================================
 // 1. DASHBOARD & REGIONAL PERFORMANCE
@@ -413,6 +396,7 @@ exports.getBusinesses = async (req, res) => {
 
     const businesses = await SalesBusiness.find(filter)
       .populate("assignedManager", "name email phone")
+      .populate("clientAccount", "name companyName email")
       .sort({ state: 1, city: 1, name: 1 });
 
     // Attach latest monthly sales data
@@ -517,6 +501,9 @@ exports.createBusiness = async (req, res) => {
     const random = Math.floor(1000 + Math.random() * 9000);
     const code = req.body.code ? req.body.code.trim().toUpperCase() : `BIZ-${statePrefix}-${cityPrefix}-${random}`;
 
+    const clientLink = await resolveClientAccount(req.body.clientAccount);
+    if (clientLink.error) return res.status(400).json({ message: clientLink.error });
+
     const existingCode = await SalesBusiness.findOne({ code });
     if (existingCode) {
       return res.status(400).json({ message: "A business with this unique code already exists." });
@@ -534,7 +521,16 @@ exports.createBusiness = async (req, res) => {
       monthlyTarget: Number(monthlyTarget) || 0,
       notes: notes ? notes.trim() : "",
       assignedManager: assignedManager || null,
+      clientAccount: clientLink.skip ? null : clientLink.value,
       createdBy: req.user._id,
+    });
+
+    await audit({
+      entityType: "SalesBusiness",
+      entityId: business._id,
+      action: "BUSINESS_CREATED",
+      actor: req.user,
+      after: { name: business.name, city: business.city, state: business.state, monthlyTarget: business.monthlyTarget },
     });
 
     return res.status(201).json({
@@ -557,7 +553,11 @@ exports.updateBusiness = async (req, res) => {
       return res.status(404).json({ message: "Business not found." });
     }
 
-    const fields = ["name", "category", "state", "city", "address", "phone", "email", "monthlyTarget", "notes", "assignedManager", "isActive"];
+    const fields = ["name", "category", "state", "city", "address", "phone", "email", "monthlyTarget", "notes", "assignedManager", "isActive", "clientAccount"];
+    const before = Object.fromEntries(fields.map((f) => [f, business[f] === undefined ? null : business[f]]));
+    const clientLink = await resolveClientAccount(req.body.clientAccount);
+    if (clientLink.error) return res.status(400).json({ message: clientLink.error });
+    if (!clientLink.skip) req.body.clientAccount = clientLink.value;
     fields.forEach((f) => {
       if (req.body[f] !== undefined) {
         business[f] = req.body[f];
@@ -565,6 +565,15 @@ exports.updateBusiness = async (req, res) => {
     });
 
     await business.save();
+
+    await audit({
+      entityType: "SalesBusiness",
+      entityId: business._id,
+      action: "BUSINESS_UPDATED",
+      actor: req.user,
+      before,
+      after: Object.fromEntries(fields.map((f) => [f, business[f] === undefined ? null : business[f]])),
+    });
 
     return res.json({
       message: "Business updated successfully",
@@ -585,8 +594,17 @@ exports.deleteBusiness = async (req, res) => {
       return res.status(404).json({ message: "Business not found." });
     }
 
+    const recordCount = await SalesRecord.countDocuments({ business: id });
     await SalesBusiness.findByIdAndDelete(id);
     await SalesRecord.deleteMany({ business: id });
+    await audit({
+      entityType: "SalesBusiness",
+      entityId: business._id,
+      action: "BUSINESS_DELETED",
+      actor: req.user,
+      before: { name: business.name, city: business.city, state: business.state, monthlyTarget: business.monthlyTarget },
+      metadata: { salesRecordsDeleted: recordCount },
+    });
 
     return res.json({ message: "Business and associated sales records deleted successfully." });
   } catch (error) {
@@ -606,7 +624,12 @@ exports.getSalesRecords = async (req, res) => {
 
     const filter = { business: { $in: businessIds } };
 
-    if (req.query.businessId) filter.business = req.query.businessId;
+    // Keep the authorization scope when filtering by a single business
+    if (req.query.businessId) {
+      const allowed = businessIds.some((id) => id.toString() === String(req.query.businessId));
+      if (!allowed) return res.json([]);
+      filter.business = req.query.businessId;
+    }
     if (req.query.year) filter.year = parseInt(req.query.year, 10);
     if (req.query.month) filter.month = parseInt(req.query.month, 10);
     if (req.query.city) filter.city = req.query.city.trim();
@@ -626,7 +649,19 @@ exports.getSalesRecords = async (req, res) => {
 
 exports.createSalesRecord = async (req, res) => {
   try {
-    const { businessId, month, year, totalSales, orders, target, remarks } = req.body;
+    const { businessId, month, year, totalSales, orders, target, remarks, salesBasis } = req.body;
+    const fin = {};
+    for (const [key, label] of [["discount", "Discount"], ["cost", "Cost"], ["expenses", "Expenses"]]) {
+      const r = optionalAmount(req.body[key], label);
+      if (r.error) return res.status(400).json({ message: r.error });
+      if (!r.skip) fin[key] = r.value;
+    }
+    if (salesBasis !== undefined && !["gross", "net"].includes(salesBasis)) {
+      return res.status(400).json({ message: "salesBasis must be 'gross' or 'net'." });
+    }
+    if (totalSales === undefined || totalSales === "" || !Number.isFinite(Number(totalSales)) || Number(totalSales) < 0) {
+      return res.status(400).json({ message: "Total Sales must be a non-negative number." });
+    }
 
     if (!businessId || !month || !year) {
       return res.status(400).json({ message: "Business ID, month, and year are required." });
@@ -648,8 +683,11 @@ exports.createSalesRecord = async (req, res) => {
 
     const mNum = parseInt(month, 10);
     const yNum = parseInt(year, 10);
-    if (mNum < 1 || mNum > 12) {
+    if (!(mNum >= 1 && mNum <= 12)) {
       return res.status(400).json({ message: "Month must be between 1 and 12." });
+    }
+    if (!(yNum >= 2000 && yNum <= 2100)) {
+      return res.status(400).json({ message: "Year must be between 2000 and 2100." });
     }
 
     const salesVal = Math.max(0, parseFloat(totalSales) || 0);
@@ -678,10 +716,21 @@ exports.createSalesRecord = async (req, res) => {
       totalSales: salesVal,
       orders: ordersVal,
       target: targetVal,
-      remarks: remarks ? remarks.trim() : "",
+      remarks: remarks ? String(remarks).trim() : "",
+      salesBasis: salesBasis || "gross",
+      ...fin,
       uploadedBy: req.user._id,
       uploaderName: req.user.name,
       source: "manual",
+    });
+
+    await audit({
+      entityType: "SalesRecord",
+      entityId: record._id,
+      action: "SALES_RECORD_CREATED",
+      actor: req.user,
+      after: financialSnapshot(record),
+      metadata: { business: record.business, monthName: record.monthName },
     });
 
     return res.status(201).json({ message: "Sales record created successfully.", record });
@@ -709,12 +758,39 @@ exports.updateSalesRecord = async (req, res) => {
       }
     }
 
-    if (req.body.totalSales !== undefined) record.totalSales = Math.max(0, parseFloat(req.body.totalSales) || 0);
+    const before = financialSnapshot(record);
+    if (req.body.totalSales !== undefined) {
+      const n = Number(req.body.totalSales);
+      if (!Number.isFinite(n) || n < 0) return res.status(400).json({ message: "Total Sales must be a non-negative number." });
+      record.totalSales = n;
+    }
     if (req.body.orders !== undefined) record.orders = Math.max(0, parseInt(req.body.orders, 10) || 0);
     if (req.body.target !== undefined) record.target = Math.max(0, parseFloat(req.body.target) || 0);
-    if (req.body.remarks !== undefined) record.remarks = req.body.remarks.trim();
+    if (req.body.remarks !== undefined) record.remarks = String(req.body.remarks || "").trim();
+    if (req.body.salesBasis !== undefined) {
+      if (!["gross", "net"].includes(req.body.salesBasis)) return res.status(400).json({ message: "salesBasis must be 'gross' or 'net'." });
+      record.salesBasis = req.body.salesBasis;
+    }
+    for (const [key, label] of [["discount", "Discount"], ["cost", "Cost"], ["expenses", "Expenses"]]) {
+      const r = optionalAmount(req.body[key], label);
+      if (r.error) return res.status(400).json({ message: r.error });
+      if (!r.skip) record[key] = r.value;
+    }
+    if (record.salesBasis === "gross" && typeof record.discount === "number" && record.discount > record.totalSales) {
+      return res.status(400).json({ message: "Discount cannot exceed gross Total Sales. If sales are already net of discounts, set Sales Basis to Net." });
+    }
 
     await record.save();
+
+    await audit({
+      entityType: "SalesRecord",
+      entityId: record._id,
+      action: "SALES_RECORD_UPDATED",
+      actor: req.user,
+      before,
+      after: financialSnapshot(record),
+      metadata: { business: record.business, monthName: record.monthName },
+    });
 
     return res.json({ message: "Sales record updated successfully.", record });
   } catch (error) {
@@ -741,6 +817,13 @@ exports.deleteSalesRecord = async (req, res) => {
     }
 
     await SalesRecord.findByIdAndDelete(id);
+    await audit({
+      entityType: "SalesRecord",
+      entityId: record._id,
+      action: "SALES_RECORD_DELETED",
+      actor: req.user,
+      before: { ...financialSnapshot(record), business: record.business, monthName: record.monthName },
+    });
     return res.json({ message: "Sales record deleted successfully." });
   } catch (error) {
     console.error("Delete Record Error:", error);
@@ -749,371 +832,14 @@ exports.deleteSalesRecord = async (req, res) => {
 };
 
 // =========================================================================
-// 4. EXCEL/CSV IMPORT & PREVIEW WORKFLOW
+// 4. EXCEL/CSV IMPORT
+// Preview / commit / template now live in controllers/salesImportController.js
+// (header detection, column mapping, row-level errors, transactional commit).
 // =========================================================================
 
-/**
- * Step 1: Previews uploaded file, validates rows against schema, business existence & manager authorization.
- */
-exports.previewSalesExcel = async (req, res) => {
-  try {
-    if (!req.file || !req.file.buffer) {
-      return res.status(400).json({ message: "No file uploaded. Please upload a valid .xlsx, .xls, or .csv file." });
-    }
-
-    // Read Workbook buffer
-    let workbook;
-    try {
-      workbook = xlsx.read(req.file.buffer, { type: "buffer" });
-    } catch (parseErr) {
-      return res.status(400).json({ message: "Invalid Excel/CSV format. Unable to parse workbook." });
-    }
-
-    const firstSheetName = workbook.SheetNames[0];
-    if (!firstSheetName) {
-      return res.status(400).json({ message: "The uploaded workbook does not contain any sheets." });
-    }
-
-    const sheet = workbook.Sheets[firstSheetName];
-    const rawRows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
-
-    if (rawRows.length === 0) {
-      return res.status(400).json({ message: "The uploaded worksheet is empty." });
-    }
-
-    // Fetch user's authorized businesses for validation
-    const authFilter = await getManagerAuthorizedBusinessQuery(req.user);
-    const authorizedBusinesses = await SalesBusiness.find(authFilter);
-    const allBusinesses = await SalesBusiness.find({});
-
-    const validRows = [];
-    const invalidRows = [];
-
-    rawRows.forEach((row, index) => {
-      const rowNumber = index + 2; // Row 1 is header
-
-      // Extract columns with case-insensitive normalization
-      const getCol = (names) => {
-        for (const key of Object.keys(row)) {
-          const cleanKey = key.trim().toLowerCase();
-          if (names.includes(cleanKey)) {
-            return String(row[key]).trim();
-          }
-        }
-        return "";
-      };
-
-      const rawMonth = getCol(["month", "period", "month year", "date"]);
-      const rawState = getCol(["state", "region"]);
-      const rawCity = getCol(["city", "location", "town"]);
-      const rawBusinessName = getCol(["business name", "hotel/restaurant", "hotel", "restaurant", "business", "name"]);
-      const rawSales = getCol(["total sales", "sales", "revenue", "monthly sales", "gross sales"]);
-      const rawOrders = getCol(["orders", "order count", "transactions", "no of orders"]);
-      const rawTarget = getCol(["target", "monthly target", "sales target"]);
-      const rawRemarks = getCol(["remarks", "notes", "comment", "comments"]);
-
-      const errors = [];
-
-      // 1. Month validation
-      const parsedMY = parseMonthYear(rawMonth);
-      if (!parsedMY) {
-        errors.push("Invalid or missing Month (expected e.g. 'September 2026', '2026-09')");
-      }
-
-      // 2. Business name validation
-      if (!rawBusinessName) {
-        errors.push("Missing Business Name");
-      }
-
-      // Check if business exists in system
-      let matchedBiz = null;
-      if (rawBusinessName) {
-        matchedBiz = allBusinesses.find(
-          (b) => b.name.toLowerCase() === rawBusinessName.toLowerCase() &&
-                 (!rawCity || b.city.toLowerCase() === rawCity.toLowerCase())
-        );
-
-        if (!matchedBiz) {
-          matchedBiz = allBusinesses.find((b) => b.name.toLowerCase() === rawBusinessName.toLowerCase());
-        }
-
-        if (!matchedBiz) {
-          errors.push(`Business "${rawBusinessName}" does not exist in database.`);
-        }
-      }
-
-      // 3. Manager permission check
-      if (matchedBiz && req.user.role === "manager") {
-        const isAuthorized = authorizedBusinesses.some((b) => b._id.toString() === matchedBiz._id.toString());
-        if (!isAuthorized) {
-          errors.push(`Unauthorized: You are not assigned to manage "${matchedBiz.name}" in ${matchedBiz.city}, ${matchedBiz.state}.`);
-        }
-      }
-
-      // 4. Sales amount validation
-      const cleanSales = rawSales.replace(/[^0-9.-]+/g, "");
-      const numSales = parseFloat(cleanSales);
-      if (isNaN(numSales) || numSales < 0) {
-        errors.push("Invalid Total Sales (must be a positive number)");
-      }
-
-      // 5. Orders validation
-      const cleanOrders = rawOrders.replace(/[^0-9.-]+/g, "");
-      const numOrders = cleanOrders ? parseInt(cleanOrders, 10) : 0;
-      if (isNaN(numOrders) || numOrders < 0) {
-        errors.push("Orders must be a valid non-negative number");
-      }
-
-      // 6. Target validation
-      const cleanTarget = rawTarget.replace(/[^0-9.-]+/g, "");
-      const numTarget = cleanTarget ? parseFloat(cleanTarget) : (matchedBiz ? matchedBiz.monthlyTarget : 0);
-
-      if (errors.length > 0) {
-        invalidRows.push({
-          rowNumber,
-          businessName: rawBusinessName || "Unknown",
-          state: rawState || (matchedBiz ? matchedBiz.state : "-"),
-          city: rawCity || (matchedBiz ? matchedBiz.city : "-"),
-          month: rawMonth || "-",
-          totalSales: rawSales || "-",
-          errors,
-        });
-      } else {
-        validRows.push({
-          rowNumber,
-          businessId: matchedBiz._id,
-          businessName: matchedBiz.name,
-          category: matchedBiz.category,
-          state: matchedBiz.state,
-          city: matchedBiz.city,
-          month: parsedMY.month,
-          year: parsedMY.year,
-          monthName: parsedMY.monthName,
-          totalSales: numSales,
-          orders: numOrders,
-          target: numTarget,
-          remarks: rawRemarks || "",
-        });
-      }
-    });
-
-    return res.json({
-      filename: req.file.originalname,
-      totalRows: rawRows.length,
-      validCount: validRows.length,
-      invalidCount: invalidRows.length,
-      validRows,
-      invalidRows,
-    });
-  } catch (error) {
-    console.error("Preview Excel Error:", error);
-    return res.status(500).json({ message: "Failed to process Excel file for preview." });
-  }
-};
-
-/**
- * Step 2: Commits validated rows to the database with duplicate prevention & audit logging.
- */
-exports.commitSalesExcel = async (req, res) => {
-  try {
-    const { rows, filename, updateExisting = true } = req.body;
-
-    if (!Array.isArray(rows) || rows.length === 0) {
-      return res.status(400).json({ message: "No rows provided to commit." });
-    }
-
-    const authFilter = await getManagerAuthorizedBusinessQuery(req.user);
-    const authorizedBusinesses = await SalesBusiness.find(authFilter);
-    const authBizIds = new Set(authorizedBusinesses.map((b) => b._id.toString()));
-
-    let successCount = 0;
-    let updatedCount = 0;
-    let skippedCount = 0;
-    let failedCount = 0;
-    let totalRevenue = 0;
-    const errors = [];
-
-    // Create Import Job audit record
-    const importJob = await SalesImportJob.create({
-      uploadedBy: req.user._id,
-      uploaderName: req.user.name,
-      filename: filename || "sales_import.xlsx",
-      totalRows: rows.length,
-    });
-
-    for (const row of rows) {
-      try {
-        // Enforce authorization per row
-        if (req.user.role === "manager" && !authBizIds.has(String(row.businessId))) {
-          failedCount++;
-          errors.push({
-            rowNumber: row.rowNumber,
-            businessName: row.businessName,
-            month: row.monthName,
-            reason: "Unauthorized business assignment.",
-          });
-          continue;
-        }
-
-        const existingRecord = await SalesRecord.findOne({
-          business: row.businessId,
-          year: row.year,
-          month: row.month,
-        });
-
-        if (existingRecord) {
-          if (updateExisting) {
-            existingRecord.totalSales = row.totalSales;
-            existingRecord.orders = row.orders;
-            existingRecord.target = row.target;
-            existingRecord.remarks = row.remarks || existingRecord.remarks;
-            existingRecord.source = "excel_upload";
-            existingRecord.importJob = importJob._id;
-            existingRecord.uploadedBy = req.user._id;
-            existingRecord.uploaderName = req.user.name;
-            await existingRecord.save();
-            updatedCount++;
-            totalRevenue += row.totalSales;
-          } else {
-            skippedCount++;
-          }
-        } else {
-          await SalesRecord.create({
-            business: row.businessId,
-            businessName: row.businessName,
-            category: row.category,
-            state: row.state,
-            city: row.city,
-            month: row.month,
-            year: row.year,
-            monthName: row.monthName,
-            totalSales: row.totalSales,
-            orders: row.orders,
-            target: row.target,
-            remarks: row.remarks || "",
-            uploadedBy: req.user._id,
-            uploaderName: req.user.name,
-            source: "excel_upload",
-            importJob: importJob._id,
-          });
-          successCount++;
-          totalRevenue += row.totalSales;
-        }
-      } catch (rowErr) {
-        failedCount++;
-        errors.push({
-          rowNumber: row.rowNumber,
-          businessName: row.businessName,
-          month: row.monthName,
-          reason: rowErr.message,
-        });
-      }
-    }
-
-    // Update job audit summary
-    importJob.successCount = successCount;
-    importJob.updatedCount = updatedCount;
-    importJob.failedCount = failedCount;
-    importJob.totalRevenue = totalRevenue;
-    importJob.status = failedCount === 0 ? "completed" : (successCount > 0 || updatedCount > 0 ? "partial" : "failed");
-    importJob.errorLogs = errors;
-    await importJob.save();
-
-    return res.json({
-      message: "Sales data imported successfully.",
-      summary: {
-        totalProcessed: rows.length,
-        successCount,
-        updatedCount,
-        skippedCount,
-        failedCount,
-        totalRevenue,
-      },
-    });
-  } catch (error) {
-    console.error("Commit Excel Error:", error);
-    return res.status(500).json({ message: "Failed to commit imported sales data." });
-  }
-};
-
 // =========================================================================
-// 5. DOWNLOAD TEMPLATE & EXPORT REPORTS
+// 5. EXPORT REPORTS
 // =========================================================================
-
-/**
- * Downloads a ready-to-use .xlsx template with actual column headers and sample data
- */
-exports.downloadTemplate = async (req, res) => {
-  try {
-    const templateData = [
-      {
-        Month: "September 2026",
-        State: "Jharkhand",
-        City: "Ranchi",
-        "Business Name": "Hotel Royal",
-        "Total Sales": 250000,
-        Orders: 120,
-        Target: 300000,
-        Remarks: "Good",
-      },
-      {
-        Month: "September 2026",
-        State: "Jharkhand",
-        City: "Ranchi",
-        "Business Name": "Maya Multicuisine Restaurant",
-        "Total Sales": 180000,
-        Orders: 95,
-        Target: 200000,
-        Remarks: "Improving",
-      },
-      {
-        Month: "October 2026",
-        State: "Jharkhand",
-        City: "Ranchi",
-        "Business Name": "Hotel Royal",
-        "Total Sales": 280000,
-        Orders: 135,
-        Target: 300000,
-        Remarks: "Good",
-      },
-      {
-        Month: "October 2026",
-        State: "Jharkhand",
-        City: "Ranchi",
-        "Business Name": "Hotel Green Horizon",
-        "Total Sales": 345000,
-        Orders: 155,
-        Target: 350000,
-        Remarks: "Near Target",
-      },
-    ];
-
-    const wb = xlsx.utils.book_new();
-    const ws = xlsx.utils.json_to_sheet(templateData);
-
-    // Set column widths for better readability
-    ws["!cols"] = [
-      { wch: 18 }, // Month
-      { wch: 16 }, // State
-      { wch: 16 }, // City
-      { wch: 32 }, // Business Name
-      { wch: 14 }, // Total Sales
-      { wch: 10 }, // Orders
-      { wch: 14 }, // Target
-      { wch: 22 }, // Remarks
-    ];
-
-    xlsx.utils.book_append_sheet(wb, ws, "Monthly Sales");
-    const buffer = xlsx.write(wb, { type: "buffer", bookType: "xlsx" });
-
-    res.setHeader("Content-Disposition", 'attachment; filename="ESG_Sales_Import_Template.xlsx"');
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    return res.send(buffer);
-  } catch (error) {
-    console.error("Template Download Error:", error);
-    return res.status(500).json({ message: "Failed to generate Excel template." });
-  }
-};
 
 /**
  * Exports permitted sales records into a clean formatted .xlsx workbook
@@ -1168,6 +894,10 @@ exports.exportSalesExcel = async (req, res) => {
       Orders: r.orders,
       "Target (INR)": r.target,
       "Achievement %": r.target > 0 ? `${((r.totalSales / r.target) * 100).toFixed(1)}%` : "N/A",
+      "Sales Basis": r.salesBasis === "net" ? "Net" : "Gross",
+      "Discount (INR)": typeof r.discount === "number" ? r.discount : "Not recorded",
+      "Cost (INR)": typeof r.cost === "number" ? r.cost : "Not recorded",
+      "Expenses (INR)": typeof r.expenses === "number" ? r.expenses : "Not recorded",
       Remarks: r.remarks,
       "Uploader": r.uploaderName || "System",
       Source: r.source === "excel_upload" ? "Excel Import" : "Manual Entry",
@@ -1185,24 +915,6 @@ exports.exportSalesExcel = async (req, res) => {
   } catch (error) {
     console.error("Export Error:", error);
     return res.status(500).json({ message: "Failed to export sales report." });
-  }
-};
-
-/**
- * Returns past upload history / audit logs
- */
-exports.getImportHistory = async (req, res) => {
-  try {
-    const filter = req.user.role === "admin" ? {} : { uploadedBy: req.user._id };
-    const history = await SalesImportJob.find(filter)
-      .sort({ createdAt: -1 })
-      .limit(20)
-      .populate("uploadedBy", "name email");
-
-    return res.json(history);
-  } catch (error) {
-    console.error("Import History Error:", error);
-    return res.status(500).json({ message: "Failed to fetch import history." });
   }
 };
 

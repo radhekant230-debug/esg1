@@ -22,7 +22,7 @@ import {
   FaFilter,
 } from "react-icons/fa";
 
-export default function SalesPerformanceTab({ salesData, businessType }) {
+export default function SalesPerformanceTab({ salesData, businessType, onOpenAnalytics }) {
   const [selectedPeriod, setSelectedPeriod] = useState("daily");
   const records = salesData?.records || [];
   const summary = salesData?.summary || {};
@@ -30,15 +30,22 @@ export default function SalesPerformanceTab({ salesData, businessType }) {
   const topProducts = salesData?.topProducts || [];
   const industryDetails = salesData?.industryDetails || {};
 
-  // Format data for chart
-  const chartData = records.map((r) => {
+  // Format data for chart (monthly uploads are labelled by month and summed across locations)
+  const chartData = [];
+  records.forEach((r) => {
     const d = new Date(r.date);
-    return {
-      date: `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`,
-      revenue: r.totalRevenue || 0,
-      orders: r.ordersCount || 0,
-      attributed: r.adAttributedRevenue || 0,
-    };
+    const label =
+      r.periodType === "monthly"
+        ? d.toLocaleString("en-IN", { month: "short", year: "numeric", timeZone: "Asia/Kolkata" })
+        : `${d.getDate()} ${d.toLocaleString("en-US", { month: "short" })}`;
+    const last = chartData[chartData.length - 1];
+    if (last && last.date === label) {
+      last.revenue += r.totalRevenue || 0;
+      last.orders += r.ordersCount || 0;
+      last.attributed += r.adAttributedRevenue || 0;
+    } else {
+      chartData.push({ date: label, revenue: r.totalRevenue || 0, orders: r.ordersCount || 0, attributed: r.adAttributedRevenue || 0 });
+    }
   });
 
   // CSV Export handler
@@ -48,7 +55,7 @@ export default function SalesPerformanceTab({ salesData, businessType }) {
     const rows = records
       .map(
         (r) =>
-          `"${new Date(r.date).toISOString().split("T")[0]}",${r.totalRevenue || 0},${
+          `"${r.reportingMonth || new Date(r.date).toISOString().split("T")[0]}",${r.totalRevenue || 0},${
             r.ordersCount || 0
           },${r.averageOrderValue || 0},${r.adAttributedRevenue || 0},${r.returnsAmount || 0}`
       )
@@ -57,14 +64,54 @@ export default function SalesPerformanceTab({ salesData, businessType }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `sales-report-${selectedPeriod}-october2026.csv`);
+    link.setAttribute("download", `sales-report-${new Date().toISOString().slice(0, 10)}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  const analyticsLink = onOpenAnalytics ? (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-[#E7DFD5] bg-white p-4">
+          <div>
+            <p className="text-sm font-bold text-stone-900">Monthly sales, discount &amp; profit/loss analytics</p>
+            <p className="text-xs text-stone-500 mt-0.5">KPIs, trends, sales vs target, location comparison and import pipeline for any month.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenAnalytics}
+            className="shrink-0 px-4 py-2 rounded-lg bg-[#1A1A1A] text-white text-xs font-semibold hover:bg-black transition cursor-pointer"
+          >
+            Open Monthly Analytics
+          </button>
+        </div>
+  ) : null;
+
+  // No sales data at all (none imported, or removed): an honest empty state instead of ₹0 KPIs
+  if (records.length === 0) {
+    return (
+      <div className="space-y-8">
+        {analyticsLink}
+        <div className="bg-white border border-dashed border-[#E0D8CE] rounded-xl p-10 text-center">
+          <FaReceipt className="w-6 h-6 text-stone-300 mx-auto mb-3" />
+          <p className="text-sm font-bold text-stone-800">No sales data available</p>
+          <p className="text-xs text-stone-500 mt-1">Sales figures will appear here once your account manager uploads them.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
+      {/* The full monthly sales / discount / P&L dashboard lives in its own tab */}
+      {analyticsLink}
+
+      <div className="border-t border-[#EFE9E0] pt-6">
+        <h3 className="font-serif text-lg font-bold text-stone-900">All-time totals &amp; daily portal entries</h3>
+        <p className="text-xs text-stone-500 mt-0.5">
+          Cumulative figures across every reporting record. The monthly analytics above follow the selected reporting period.
+        </p>
+      </div>
+
       {/* Sales Summary KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-[#E7DFD5] p-5 rounded-xl shadow-xs">
@@ -77,7 +124,7 @@ export default function SalesPerformanceTab({ salesData, businessType }) {
           <div className="text-2xl font-bold font-mono text-stone-900">
             ₹{(summary.totalRevenue || 0).toLocaleString("en-IN")}
           </div>
-          <div className="text-xs text-stone-500 mt-1">Across 10 logged reporting days</div>
+          <div className="text-xs text-stone-500 mt-1">Across {records.length} reporting record{records.length === 1 ? "" : "s"}</div>
         </div>
 
         <div className="bg-white border border-[#E7DFD5] p-5 rounded-xl shadow-xs">
@@ -121,6 +168,7 @@ export default function SalesPerformanceTab({ salesData, businessType }) {
           <div className="text-xs text-stone-500 mt-1">Negligible refund & cancellation volume</div>
         </div>
       </div>
+
 
       {/* Main Revenue Trend Chart */}
       <div className="bg-white border border-[#E7DFD5] rounded-xl p-6 shadow-sm">

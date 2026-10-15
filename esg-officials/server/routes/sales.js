@@ -3,6 +3,8 @@ const router = express.Router();
 const multer = require("multer");
 const { protect, admin, adminOrManager } = require("../middlewares/auth");
 const salesController = require("../controllers/salesController");
+const salesImport = require("../controllers/salesImportController");
+const salesAnalytics = require("../controllers/salesAnalyticsController");
 
 // Memory storage for Excel and CSV file uploads
 const upload = multer({
@@ -13,7 +15,9 @@ const upload = multer({
     if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
       cb(null, true);
     } else {
-      cb(new Error("Invalid file type. Only .xlsx, .xls, and .csv spreadsheets are supported."));
+      const err = new Error("Invalid file type. Only .xlsx, .xls, and .csv spreadsheets are supported.");
+      err.status = 400;
+      cb(err);
     }
   },
 });
@@ -41,11 +45,21 @@ router.post("/records", salesController.createSalesRecord);
 router.put("/records/:id", salesController.updateSalesRecord);
 router.delete("/records/:id", admin, salesController.deleteSalesRecord);
 
-// 5. Excel Import Workflow
-router.post("/upload/preview", upload.single("file"), salesController.previewSalesExcel);
-router.post("/upload/commit", salesController.commitSalesExcel);
-router.get("/template", salesController.downloadTemplate);
+// 5. Excel/CSV Import Workflow (preview -> confirm, transactional)
+router.post("/upload/preview", upload.single("file"), salesImport.previewSalesExcel);
+router.post("/upload/commit", salesImport.commitSalesExcel);
+router.get("/upload/:id/invalid-rows", salesImport.downloadInvalidRows);
+router.delete("/upload/:id", salesImport.cancelPreview);
+router.get("/upload/:id/file", salesImport.downloadOriginalFile);
+router.get("/template", salesImport.downloadTemplate);
 router.get("/export", salesController.exportSalesExcel);
-router.get("/import-history", salesController.getImportHistory);
+router.get("/import-history", salesImport.getImportHistory);
+
+// 6. Monthly Sales, Discount, Profit & Loss analytics
+router.get("/analytics/monthly", salesAnalytics.getMonthlyAnalytics);
+router.get("/analytics/monthly/export", salesAnalytics.exportMonthlyAnalytics);
+// Date-range analytics over monthly summaries, daily records and day-wise reports
+router.get("/analytics/range", salesAnalytics.getRangeAnalytics);
+router.get("/analytics/range/export", salesAnalytics.exportRangeAnalytics);
 
 module.exports = router;

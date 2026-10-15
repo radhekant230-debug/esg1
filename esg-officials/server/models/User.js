@@ -16,6 +16,17 @@ const userSchema = new mongoose.Schema(
       trim: true
     },
 
+    // Optional login name for accounts provisioned without a mailbox
+    // (e.g. "maya@2040"). Accepted by the normal login form alongside email
+    // and client ID.
+    username: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true
+    },
+
     password: {
       type: String,
       required: true
@@ -100,6 +111,51 @@ const userSchema = new mongoose.Schema(
     lastLogin: {
       type: Date,
       default: null
+    },
+
+    // ---- Planner / notification settings (additive) ----
+    // Supervisor who receives escalations for this manager (falls back to admins)
+    supervisor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+
+    // WhatsApp number in E.164 format, e.g. +919876543210
+    whatsappNumber: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    whatsappVerified: {
+      type: Boolean,
+      default: false
+    },
+
+    whatsappVerifiedAt: {
+      type: Date,
+      default: null
+    },
+
+    // "otp" (code sent over WhatsApp) or "admin" (confirmed by an administrator)
+    whatsappVerificationMethod: {
+      type: String,
+      enum: ["", "otp", "admin"],
+      default: ""
+    },
+
+    whatsappVerification: {
+      codeHash: { type: String, default: "", select: false },
+      expiresAt: { type: Date, default: null, select: false },
+      attempts: { type: Number, default: 0, select: false }
+    },
+
+    notificationPreferences: {
+      inApp: { type: Boolean, default: true },
+      whatsapp: { type: Boolean, default: false },
+      uploadReminders: { type: Boolean, default: true },
+      escalations: { type: Boolean, default: true }
     }
   },
   {

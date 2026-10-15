@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from "react";
 import { AuthContext } from "../context/AuthContext";
 import api from "../utils/axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
     FaProjectDiagram,
@@ -15,14 +15,77 @@ import {
     FaChartLine,
     FaFileExcel,
     FaBuilding,
+    FaThLarge,
+    FaCalendarAlt,
+    FaCalendarWeek,
+    FaCloudUploadAlt,
+    FaFire,
+    FaHistory,
+    FaWhatsapp,
 } from "react-icons/fa";
 import StateSalesDashboardView from "../components/sales/StateSalesDashboardView";
+import PlannerOverview from "../components/planner/PlannerOverview";
+import ScheduleCalendar from "../components/planner/ScheduleCalendar";
+import QuarterPlanner from "../components/planner/QuarterPlanner";
+import ActivityListPanel from "../components/planner/ActivityListPanel";
+import RemindersPanel from "../components/planner/RemindersPanel";
+import EscalationsPanel from "../components/planner/EscalationsPanel";
+import MonthlyAnalytics from "../components/sales/MonthlyAnalytics";
+import ImportHistoryPanel from "../components/sales/ImportHistoryPanel";
+import ExcelUploadModal from "../components/sales/ExcelUploadModal";
+import ClientWhatsAppPanel from "../components/planner/ClientWhatsAppPanel";
+
+// Manager portal sections (order = navigation order). "sales" and "projects"
+// are the pre-existing views and are unchanged.
+const PORTAL_TABS = [
+    { id: "overview", label: "Overview", icon: FaThLarge },
+    { id: "whatsapp", label: "Client WhatsApp Contacts", icon: FaWhatsapp },
+    { id: "analytics", label: "Monthly Analytics", icon: FaChartLine },
+    { id: "calendar", label: "Manager Calendar", icon: FaCalendarAlt },
+    { id: "quarter", label: "Quarterly Planner", icon: FaCalendarWeek },
+    { id: "uploads", label: "Scheduled Uploads", icon: FaCloudUploadAlt },
+    { id: "reminders", label: "Reminders & Notifications", icon: FaBell },
+    { id: "approvals", label: "Pending Approvals", icon: FaClipboardCheck, badgeKey: "pendingApprovals" },
+    { id: "escalations", label: "Escalated Tasks", icon: FaFire, badgeKey: "escalated" },
+    { id: "imports", label: "Sales Import History", icon: FaHistory },
+    { id: "sales", label: "State-Wise Sales & Excel Portal", icon: FaFileExcel },
+    { id: "projects", label: "Projects & Collaboration", icon: FaProjectDiagram },
+];
 
 const ManagerDashboard = () => {
     const { user } = useContext(AuthContext);
     const navigate = useNavigate();
 
-    const [portalTab, setPortalTab] = useState("sales"); // "sales" | "projects"
+    const [searchParams, setSearchParams] = useSearchParams();
+    const requestedTab = searchParams.get("tab");
+    const portalTab = PORTAL_TABS.some((t) => t.id === requestedTab) ? requestedTab : "overview";
+    const focusActivityId = searchParams.get("activity") || "";
+    const setPortalTab = (tabId) => {
+        const params = new URLSearchParams(searchParams);
+        params.set("tab", tabId);
+        params.delete("activity");
+        setSearchParams(params);
+    };
+    const [plannerRefresh, setPlannerRefresh] = useState(0);
+    const [plannerBadges, setPlannerBadges] = useState({});
+    const [globalUploadOpen, setGlobalUploadOpen] = useState(false);
+    const bumpPlanner = () => setPlannerRefresh((n) => n + 1);
+
+    useEffect(() => {
+        let cancelled = false;
+        api.get("/planner/summary")
+            .then((res) => {
+                if (cancelled) return;
+                setPlannerBadges({
+                    pendingApprovals: res.data.pendingApprovals?.length || 0,
+                    escalated: res.data.escalated?.length || 0,
+                });
+            })
+            .catch(() => {});
+        return () => {
+            cancelled = true;
+        };
+    }, [plannerRefresh]);
     const [projects, setProjects] = useState([]);
     const [tasks, setTasks] = useState([]);
     const [approvals, setApprovals] = useState([]);
@@ -179,44 +242,108 @@ const ManagerDashboard = () => {
     return (
         <div className="max-w-7xl mx-auto space-y-6">
 
-            {/* TOP PORTAL NAVIGATION TABS */}
-            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-gray-200 shadow-xs">
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => setPortalTab("sales")}
-                        className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center gap-2 cursor-pointer ${
-                            portalTab === "sales"
-                                ? "bg-gray-900 text-white shadow-md"
-                                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                        }`}
-                    >
-                        <FaChartLine className="text-amber-400" />
-                        State-Wise Sales & Excel Portal
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setPortalTab("projects")}
-                        className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition flex items-center gap-2 cursor-pointer ${
-                            portalTab === "projects"
-                                ? "bg-gray-900 text-white shadow-md"
-                                : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-                        }`}
-                    >
-                        <FaProjectDiagram className="text-blue-400" />
-                        Projects & Collaboration
-                    </button>
+            {/* TOP PORTAL NAVIGATION TABS (scrolls horizontally on mobile) */}
+            <nav
+                aria-label="Manager portal sections"
+                className="bg-white p-2 rounded-2xl border border-gray-200 shadow-xs flex items-center gap-2"
+            >
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1" role="tablist">
+                    {PORTAL_TABS.map((tab) => {
+                        const Icon = tab.icon;
+                        const active = portalTab === tab.id;
+                        const badge = tab.badgeKey ? plannerBadges[tab.badgeKey] : 0;
+                        return (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={active}
+                                onClick={() => setPortalTab(tab.id)}
+                                className={`shrink-0 px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer whitespace-nowrap ${
+                                    active
+                                        ? "bg-gray-900 text-white shadow-md"
+                                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                                }`}
+                            >
+                                <Icon className={active ? "text-amber-400" : "text-gray-400"} />
+                                {tab.label}
+                                {badge > 0 && (
+                                    <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] flex items-center justify-center ${tab.id === "escalations" ? "bg-rose-600 text-white" : "bg-amber-500 text-white"}`}>
+                                        {badge}
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
 
-                <div className="hidden sm:flex items-center gap-2 pr-2 text-xs font-mono text-gray-500">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Manager Active
+                <div className="flex items-center gap-2 pr-2 shrink-0">
+                    <button
+                        type="button"
+                        id="manager-nav-import-sales-btn"
+                        onClick={() => setGlobalUploadOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow transition cursor-pointer"
+                        title="Upload sales data for any date range (CSV, Excel)"
+                    >
+                        <FaCloudUploadAlt />
+                        <span className="hidden md:inline">Import Sales</span>
+                    </button>
+                    <div className="hidden xl:flex items-center gap-2 pl-1 text-xs font-mono text-gray-500">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Manager Active
+                    </div>
                 </div>
-            </div>
+            </nav>
 
-            {portalTab === "sales" ? (
-                <StateSalesDashboardView />
-            ) : (
+            <ExcelUploadModal
+                isOpen={globalUploadOpen}
+                onClose={() => setGlobalUploadOpen(false)}
+                onSuccess={() => {
+                    setGlobalUploadOpen(false);
+                    bumpPlanner();
+                }}
+            />
+
+            {portalTab === "overview" && (
+                <PlannerOverview onNavigate={setPortalTab} refreshKey={plannerRefresh} onDataChanged={bumpPlanner} />
+            )}
+            {portalTab === "whatsapp" && <ClientWhatsAppPanel />}
+            {portalTab === "analytics" && <MonthlyAnalytics refreshKey={plannerRefresh} />}
+            {portalTab === "calendar" && (
+                <ScheduleCalendar title="Manager calendar" refreshKey={plannerRefresh} onDataChanged={bumpPlanner} />
+            )}
+            {portalTab === "quarter" && <QuarterPlanner refreshKey={plannerRefresh} onDataChanged={bumpPlanner} />}
+            {portalTab === "uploads" && (
+                <ActivityListPanel
+                    title="Scheduled uploads"
+                    subtitle="Content/news uploads with their exact date, time (IST), manager, client and status. Reminders go to the assigned manager one day before."
+                    presetType="Scheduled Upload"
+                    refreshKey={plannerRefresh}
+                    onDataChanged={bumpPlanner}
+                    openActivityId={focusActivityId}
+                    emptyText="No scheduled uploads yet."
+                />
+            )}
+            {portalTab === "reminders" && <RemindersPanel refreshKey={plannerRefresh} />}
+            {portalTab === "approvals" && (
+                <ActivityListPanel
+                    title="Pending approvals"
+                    subtitle="Activities waiting for the client's approval."
+                    presetStatus="Pending Approval"
+                    allowCreate={false}
+                    refreshKey={plannerRefresh}
+                    onDataChanged={bumpPlanner}
+                    openActivityId={focusActivityId}
+                    emptyText="Nothing is waiting for client approval."
+                />
+            )}
+            {portalTab === "escalations" && (
+                <EscalationsPanel refreshKey={plannerRefresh} onDataChanged={bumpPlanner} openActivityId={focusActivityId} />
+            )}
+            {portalTab === "imports" && <ImportHistoryPanel refreshKey={plannerRefresh} onImported={bumpPlanner} />}
+
+            {portalTab === "sales" && <StateSalesDashboardView />}
+            {portalTab === "projects" && (
                 <div className="space-y-8">
                     {/* HEADER */}
                     <div className="bg-black text-white rounded-2xl p-6 sm:p-8 shadow-lg">

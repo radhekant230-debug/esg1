@@ -1133,3 +1133,171 @@ exports.resetManagerPassword = async (
     });
   }
 };
+
+// ==========================================
+// GET WHATSAPP CONTACTS (MANAGER & ADMIN)
+// Returns all clients with their saved WhatsApp numbers
+// ==========================================
+exports.getWhatsAppContacts = async (req, res) => {
+  try {
+    const clients = await User.find({
+      role: "client",
+    })
+      .select("name email phone whatsappNumber clientId companyName assignedManager isActive createdAt updatedAt")
+      .populate("assignedManager", "name email phone")
+      .sort({ name: 1 });
+
+    const clientIds = clients.map((c) => c._id);
+    const profiles = await ClientProfile.find({ client: { $in: clientIds } })
+      .select("client businessName businessType logo contactPersonName");
+    const profileMap = new Map();
+    profiles.forEach((p) => profileMap.set(p.client.toString(), p));
+
+    const enrichedContacts = clients.map((client) => {
+      const p = profileMap.get(client._id.toString());
+      return {
+        _id: client._id,
+        name: client.name,
+        companyName: client.companyName || p?.businessName || "Individual Client",
+        clientId: client.clientId || "CLI-UNASSIGNED",
+        email: client.email,
+        phone: client.phone || "",
+        whatsappNumber: client.whatsappNumber || "",
+        hasWhatsApp: Boolean(client.whatsappNumber && client.whatsappNumber.trim()),
+        assignedManager: client.assignedManager || null,
+        isActive: client.isActive !== false,
+        businessType: p?.businessType || "other",
+        logo: p?.logo || "",
+        updatedAt: client.updatedAt,
+      };
+    });
+
+    return res.json({
+      success: true,
+      count: enrichedContacts.length,
+      contacts: enrichedContacts,
+    });
+  } catch (error) {
+    console.error("Get WhatsApp Contacts Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch WhatsApp contacts: " + (error.message || "Server Error"),
+    });
+  }
+};
+
+// ==========================================
+// UPDATE CLIENT WHATSAPP NUMBER (MANAGER & ADMIN)
+// Validates phone number with country code, prevents duplicate assignments,
+// and saves permanently in MongoDB client record.
+// ==========================================
+exports.updateClientWhatsApp = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { whatsappNumber } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Client ID is required",
+      });
+    }
+
+    const client = await User.findOne({
+      _id: id,
+      role: "client",
+    });
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found or not a valid client account",
+      });
+    }
+
+    // Validate phone number
+    const rawNumber = String(whatsappNumber || "").trim();
+
+    if (!rawNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "WhatsApp number is required. Please provide a valid phone number with country code.",
+      });
+    }
+
+    // Extract digits and check for leading +
+    const cleanDigits = rawNumber.replace(/\D/g, "");
+
+    // Must contain between 8 and 15 digits according to E.164 standard
+    if (cleanDigits.length < 8 || cleanDigits.length > 15) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid phone number length. A valid international phone number with country code must contain between 8 and 15 digits (e.g. +91 98765 43210).",
+      });
+    }
+
+    // Format standardized E.164 number (e.g. +919876543210)
+    const formattedNumber = `+${cleanDigits}`;
+
+    // Prevent duplicate: check if another client already has this exact WhatsApp number
+    const existingClient = await User.findOne({
+      _id: { $ne: client._id },
+      role: "client",
+      whatsappNumber: formattedNumber,
+    });
+
+    if (existingClient) {
+      return res.status(400).json({
+        success: false,
+        message: `This WhatsApp number (${formattedNumber}) is already assigned to another client: "${existingClient.name}" (${existingClient.clientId || existingClient.email}).`,
+      });
+    }
+
+    const previousNumber = client.whatsappNumber || "none";
+    client.whatsappNumber = formattedNumber;
+    if (!client.phone) {
+      client.phone = formattedNumber;
+    }
+    await client.save();
+
+    // Also update phone in ClientProfile if profile exists
+    await ClientProfile.updateOne(
+      { client: client._id },
+      { $set: { phone: formattedNumber } }
+    );
+
+    // Audit log
+    try {
+      await ActivityLog.create({
+        user: req.user.id,
+        action: "UPDATE_CLIENT_WHATSAPP",
+        entityType: "User",
+        entityId: client._id,
+        description: `Updated WhatsApp number for client "${client.name}" (${client.clientId || client.email}) from ${previousNumber} to ${formattedNumber}.`,
+      });
+    } catch (logErr) {
+      console.warn("ActivityLog create skipped:", logErr.message);
+    }
+
+    return res.json({
+      success: true,
+      message: `WhatsApp number ${formattedNumber} saved successfully for ${client.name}.`,
+      client: {
+        _id: client._id,
+        name: client.name,
+        companyName: client.companyName,
+        clientId: client.clientId,
+        email: client.email,
+        phone: client.phone,
+        whatsappNumber: client.whatsappNumber,
+        hasWhatsApp: true,
+      },
+    });
+  } catch (error) {
+    console.error("Update Client WhatsApp Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error: " + (error.message || "Failed to update WhatsApp number"),
+    });
+  }
+};

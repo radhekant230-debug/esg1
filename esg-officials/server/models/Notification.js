@@ -24,6 +24,9 @@ const notificationSchema = new mongoose.Schema(
         "message",
         "document",
         "system",
+        "reminder",
+        "escalation",
+        "schedule",
       ],
       required: true,
     },
@@ -58,6 +61,30 @@ const notificationSchema = new mongoose.Schema(
       default: null,
     },
 
+    // Planner additions (all optional / additive)
+    activity: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ScheduledActivity",
+      default: null,
+    },
+
+    relatedId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+
+    link: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    // Prevents duplicate notifications for the same reminder/escalation event
+    dedupeKey: {
+      type: String,
+      default: undefined,
+    },
+
     isRead: {
       type: Boolean,
       default: false,
@@ -71,6 +98,11 @@ const notificationSchema = new mongoose.Schema(
   {
     timestamps: true,
   }
+);
+
+notificationSchema.index(
+  { dedupeKey: 1 },
+  { unique: true, partialFilterExpression: { dedupeKey: { $type: "string" } } }
 );
 
 // Generate unique Notification ID

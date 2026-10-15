@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const router = express.Router();
 const { protect, adminOrManager } = require("../middlewares/auth");
 const portalController = require("../controllers/portalController");
+const salesAnalytics = require("../controllers/salesAnalyticsController");
 const User = require("../models/User");
 
 // All portal routes require authentication
@@ -67,6 +68,7 @@ router.use(resolvePortalClient);
 router.get("/profile", portalController.getProfile);
 router.put("/profile", portalController.updateProfile);
 router.get("/clients-selector", adminOrManager, portalController.getAllClientsForSelector);
+router.get("/sync-status", portalController.getSyncStatus);
 
 // 2. Executive Overview
 router.get("/overview", portalController.getExecutiveOverview);
@@ -74,6 +76,12 @@ router.get("/overview", portalController.getExecutiveOverview);
 // 3. Sales & Business Performance
 router.get("/sales", portalController.getSalesPerformance);
 router.post("/sales", adminOrManager, portalController.addSalesRecord);
+// Monthly sales / discount / P&L analytics — same calculations as the Manager
+// Portal, scoped to req.targetClientId's linked businesses only.
+router.get("/analytics/monthly", salesAnalytics.getClientMonthlyAnalytics);
+router.get("/analytics/monthly/export", salesAnalytics.exportClientMonthlyAnalytics);
+router.get("/analytics/range", salesAnalytics.getClientRangeAnalytics);
+router.get("/analytics/range/export", salesAnalytics.exportClientRangeAnalytics);
 
 // 4. Advertising & Campaigns
 router.get("/campaigns", portalController.getCampaigns);

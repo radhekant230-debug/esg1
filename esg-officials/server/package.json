@@ -12,7 +12,15 @@
     "create-admin": "node scripts/createAdmin.js",
     "create-manager": "node scripts/createManager.js",
     "migrate-passwords": "node scripts/migratePasswords.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node tests/run-unit.js",
+    "test:unit": "node tests/run-unit.js",
+    "test:integration": "node scripts/testPlanningSystem.js",
+    "planner:run": "node scripts/runPlannerJobs.js",
+    "db:backup": "node scripts/backupDatabase.js",
+    "migrate:planner": "node scripts/migratePlanner.js",
+    "purge:client-sales": "node scripts/purgeClientSales.js",
+    "portal:provision": "node scripts/provisionClientPortal.js",
+    "link:clients": "node scripts/linkBusinessClients.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -29,5 +37,8 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

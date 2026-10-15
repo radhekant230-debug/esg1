@@ -57,6 +57,13 @@ const salesBusinessSchema = new Schema(
       default: null,
       index: true,
     },
+    // Optional link to the client portal account that owns this business
+    clientAccount: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
     monthlyTarget: {
       type: Number,
       default: 0,
@@ -70,6 +77,12 @@ const salesBusinessSchema = new Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+    // Set when this business's sales data was deliberately removed
+    // (scripts/purgeClientSales.js); startup sample data is then never re-seeded.
+    salesDataPurgedAt: {
+      type: Date,
+      default: null,
     },
     createdBy: {
       type: Schema.Types.ObjectId,

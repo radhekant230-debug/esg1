@@ -1,20 +1,73 @@
-import React, { useState, useEffect, useContext } from "react";
-import { Link, useLocation } from "react-router-dom";
+import React, { useState, useEffect, useRef, useContext } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthContext } from "../../context/AuthContext";
+import {
+  FaChevronDown,
+  FaUserTie,
+  FaBuilding,
+  FaShieldAlt,
+  FaTachometerAlt,
+  FaSignOutAlt,
+} from "react-icons/fa";
 
 const PublicHeader = () => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const dropdownRef = useRef(null);
   const location = useLocation();
-  const { user, isAdmin, isManager, isClient } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const { user, logout, isAdmin, isManager, isClient } = useContext(AuthContext);
 
+  // Close menus on route change
   useEffect(() => {
     setMenuOpen(false);
+    setLoginOpen(false);
   }, [location.pathname]);
+
+  // Close dropdown on click outside or escape key
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setLoginOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setLoginOpen(false);
+      }
+    };
+
+    if (loginOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener("touchstart", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [loginOpen]);
 
   const isActive = (path) => {
     if (path === "/" && location.pathname === "/") return true;
     if (path !== "/" && location.pathname.startsWith(path)) return true;
     return false;
+  };
+
+  const getDashboardPath = () => {
+    if (isAdmin) return "/admin/dashboard";
+    if (isManager) return "/manager/dashboard";
+    if (isClient) return "/client/dashboard";
+    return "/client/login";
+  };
+
+  const handleLogout = () => {
+    setLoginOpen(false);
+    logout();
+    navigate("/");
   };
 
   return (
@@ -98,39 +151,197 @@ const PublicHeader = () => {
               Contact
             </Link>
           </li>
-        </ul>
 
-        <div className="nav-cta">
-          {user ? (
-            <Link
-              to={isAdmin ? "/admin/dashboard" : isManager ? "/manager/dashboard" : "/client/dashboard"}
-              className="nav-login"
-              style={isAdmin ? { color: "#8B6E3F", fontWeight: 700 } : {}}
-              title={isAdmin ? "Open ESG Admin Dashboard" : isManager ? "Open Manager Dashboard" : "Open Client Portal"}
-            >
-              {isAdmin ? "Admin Portal" : isManager ? "Manager Portal" : "Client Portal"}
-            </Link>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Link to="/client/login" className="nav-login" title="Client Portal Sign In">
-                Client Login
-              </Link>
+          {/* Mobile-only Portal Login Group */}
+          <li className="mobile-nav-portal-group">
+            <div className="mobile-nav-portal-label">PORTAL LOGIN</div>
+            <div className="mobile-nav-portal-links">
               <Link
                 to="/manager/login"
-                className="hidden md:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider font-semibold border border-purple-300 text-purple-700 hover:bg-purple-50 transition"
-                title="Manager Portal Login"
+                className="mobile-nav-portal-item mobile-nav-portal-item--manager"
+                onClick={() => setMenuOpen(false)}
               >
-                Manager
+                <div className="mobile-nav-portal-icon">
+                  <FaUserTie />
+                </div>
+                <span>Manager Login</span>
+              </Link>
+              <Link
+                to="/client/login"
+                className="mobile-nav-portal-item mobile-nav-portal-item--client"
+                onClick={() => setMenuOpen(false)}
+              >
+                <div className="mobile-nav-portal-icon">
+                  <FaBuilding />
+                </div>
+                <span>Client Login</span>
               </Link>
               <Link
                 to="/admin/login"
-                className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono uppercase tracking-wider font-bold border border-[#C5A880]/60 text-[#8B6E3F] hover:bg-[#C5A880]/15 hover:border-[#8B6E3F] transition shadow-xs"
-                title="ESG Admin Portal Login"
+                className="mobile-nav-portal-item mobile-nav-portal-item--admin"
+                onClick={() => setMenuOpen(false)}
               >
-                Admin
+                <div className="mobile-nav-portal-icon">
+                  <FaShieldAlt />
+                </div>
+                <span>Admin Login</span>
               </Link>
             </div>
-          )}
+          </li>
+        </ul>
+
+        <div className="nav-cta">
+          {/* Single Unified LOGIN Button & Dropdown */}
+          <div className="nav-login-wrapper" ref={dropdownRef}>
+            <button
+              type="button"
+              id="navbar-login-btn"
+              className={`nav-login-btn ${loginOpen ? "is-open" : ""}`}
+              onClick={() => setLoginOpen((prev) => !prev)}
+              aria-expanded={loginOpen}
+              aria-haspopup="true"
+              aria-label="Toggle login portals menu"
+            >
+              <span>
+                {user
+                  ? isAdmin
+                    ? "Admin Portal"
+                    : isManager
+                    ? "Manager Portal"
+                    : "Client Portal"
+                  : "Login"}
+              </span>
+              <FaChevronDown
+                className={`nav-login-arrow ${loginOpen ? "is-open" : ""}`}
+                aria-hidden="true"
+              />
+            </button>
+
+            {loginOpen && (
+              <div
+                className="nav-login-dropdown"
+                role="menu"
+                aria-labelledby="navbar-login-btn"
+              >
+                <div className="nav-login-dropdown-header">
+                  <span className="nav-login-dropdown-label">Select Portal</span>
+                  <span className="nav-login-dropdown-tag">Secure Access</span>
+                </div>
+
+                <div className="nav-login-dropdown-options">
+                  {user && (
+                    <>
+                      <Link
+                        to={getDashboardPath()}
+                        className="nav-login-option nav-login-option--active-dashboard"
+                        onClick={() => setLoginOpen(false)}
+                        role="menuitem"
+                      >
+                        <div className="nav-login-option-icon">
+                          <FaTachometerAlt />
+                        </div>
+                        <div className="nav-login-option-content">
+                          <div className="nav-login-option-title">
+                            <span>Open Dashboard</span>
+                            <span className="nav-login-option-arrow">→</span>
+                          </div>
+                          <span className="nav-login-option-desc">
+                            Logged in as {user.name || user.role}
+                          </span>
+                        </div>
+                      </Link>
+                      <div className="nav-login-dropdown-divider" />
+                    </>
+                  )}
+
+                  {/* 1. Manager Login */}
+                  <Link
+                    to="/manager/login"
+                    className="nav-login-option nav-login-option--manager"
+                    onClick={() => setLoginOpen(false)}
+                    role="menuitem"
+                  >
+                    <div className="nav-login-option-icon">
+                      <FaUserTie />
+                    </div>
+                    <div className="nav-login-option-content">
+                      <div className="nav-login-option-title">
+                        <span>Manager Login</span>
+                        <span className="nav-login-option-arrow">→</span>
+                      </div>
+                      <span className="nav-login-option-desc">
+                        Account &amp; growth management
+                      </span>
+                    </div>
+                  </Link>
+
+                  {/* 2. Client Login */}
+                  <Link
+                    to="/client/login"
+                    className="nav-login-option nav-login-option--client"
+                    onClick={() => setLoginOpen(false)}
+                    role="menuitem"
+                  >
+                    <div className="nav-login-option-icon">
+                      <FaBuilding />
+                    </div>
+                    <div className="nav-login-option-content">
+                      <div className="nav-login-option-title">
+                        <span>Client Login</span>
+                        <span className="nav-login-option-arrow">→</span>
+                      </div>
+                      <span className="nav-login-option-desc">
+                        Brand performance &amp; analytics
+                      </span>
+                    </div>
+                  </Link>
+
+                  {/* 3. Admin Login */}
+                  <Link
+                    to="/admin/login"
+                    className="nav-login-option nav-login-option--admin"
+                    onClick={() => setLoginOpen(false)}
+                    role="menuitem"
+                  >
+                    <div className="nav-login-option-icon">
+                      <FaShieldAlt />
+                    </div>
+                    <div className="nav-login-option-content">
+                      <div className="nav-login-option-title">
+                        <span>Admin Login</span>
+                        <span className="nav-login-option-arrow">→</span>
+                      </div>
+                      <span className="nav-login-option-desc">
+                        Executive controls &amp; governance
+                      </span>
+                    </div>
+                  </Link>
+
+                  {user && (
+                    <>
+                      <div className="nav-login-dropdown-divider" />
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="nav-login-option nav-login-option--logout"
+                        role="menuitem"
+                      >
+                        <div className="nav-login-option-icon">
+                          <FaSignOutAlt />
+                        </div>
+                        <div className="nav-login-option-content">
+                          <div className="nav-login-option-title">
+                            <span>Sign Out</span>
+                          </div>
+                        </div>
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             className={`nav-toggle ${menuOpen ? "is-active" : ""}`}
             aria-label="Toggle menu"

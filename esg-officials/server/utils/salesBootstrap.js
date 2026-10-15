@@ -11,6 +11,19 @@ const SalesLocation = require("../models/sales/SalesLocation");
  */
 async function ensureSalesData() {
   try {
+    // 0. Ensure SalesRecord indexes allow daily transaction uploads (drop old unique business_1_year_1_month_1 if present)
+    try {
+      const existingIndexes = await SalesRecord.collection.indexes().catch(() => []);
+      const oldIdx = existingIndexes.find((i) => i.name === "business_1_year_1_month_1");
+      if (oldIdx && oldIdx.unique) {
+        await SalesRecord.collection.dropIndex("business_1_year_1_month_1");
+        console.log("[salesBootstrap] Migrated salesrecords collection: dropped legacy strict monthly unique index.");
+      }
+      await SalesRecord.syncIndexes().catch(() => {});
+    } catch (e) {
+      console.warn("[salesBootstrap] Index check/migration notice:", e.message);
+    }
+
     // 1. Seed the 7 Initial Manager Locations
     const initialLocations = [
       { city: "Raichur", state: "Karnataka" },
@@ -527,7 +540,13 @@ async function ensureSalesData() {
         },
       ].filter(Boolean);
 
+      // Businesses whose sales were deliberately removed (scripts/purgeClientSales.js)
+      // never get sample sales re-created on startup.
+      const purged = new Set(
+        (await SalesBusiness.find({ salesDataPurgedAt: { $ne: null } }).select("_id").lean()).map((b) => String(b._id))
+      );
       for (const rec of sampleRecords) {
+        if (purged.has(String(rec.business))) continue;
         const exists = await SalesRecord.findOne({
           business: rec.business,
           year: rec.year,
