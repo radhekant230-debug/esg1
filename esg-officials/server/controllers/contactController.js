@@ -1,7 +1,5 @@
 const { Resend } = require("resend");
-
-const FROM_ADDRESS =
-    process.env.EMAIL_FROM || "ESG Officials <onboarding@resend.dev>";
+const { fromAddress } = require("../utils/email");
 
 const escapeHtml = (value) =>
     String(value)
@@ -38,6 +36,13 @@ exports.submitContactForm = async (req, res) => {
             industry: industry ? escapeHtml(industry.trim()) : "Not provided",
             message: escapeHtml(message.trim()).replace(/\n/g, "<br>"),
         };
+        let FROM_ADDRESS;
+        try {
+            FROM_ADDRESS = fromAddress(); // same verified-domain sender as OTP emails
+        } catch (e) {
+            console.error(`Contact form delivery is unavailable: ${e.message}`);
+            return res.status(503).json({ message: "Contact form delivery is temporarily unavailable. Please try again later." });
+        }
         const resend = new Resend(process.env.RESEND_API_KEY);
 
         const { error: notifyError } = await resend.emails.send({

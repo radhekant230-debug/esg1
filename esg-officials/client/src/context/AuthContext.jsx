@@ -150,6 +150,39 @@ export const AuthProvider = ({ children }) => {
     };
 
     // ==========================================
+    // EMAIL CODE SIGN-IN (passwordless)
+    // ==========================================
+    const requestLoginOtp = async (email, portal = null) => {
+        try {
+            const { data } = await api.post("/auth/login-otp/request", {
+                email,
+                ...(portal ? { portal } : {}),
+            });
+            return data.message;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || "Could not send the code");
+        }
+    };
+
+    const verifyLoginOtp = async (email, otp, portal = null) => {
+        try {
+            const { data } = await api.post("/auth/login-otp/verify", {
+                email,
+                otp,
+                ...(portal ? { portal } : {}),
+            });
+
+            // same session storage as the password login
+            setUser(data);
+            localStorage.setItem("userInfo", JSON.stringify(data));
+            localStorage.setItem("token", data.token);
+            return data;
+        } catch (error) {
+            throw new Error(error.response?.data?.message || "Code verification failed");
+        }
+    };
+
+    // ==========================================
     // LOGOUT
     // ==========================================
     const logout = () => {
@@ -184,6 +217,8 @@ export const AuthProvider = ({ children }) => {
                 login,
                 register,
                 verifyOTP,
+                requestLoginOtp,
+                verifyLoginOtp,
                 logout,
 
                 isAdmin,

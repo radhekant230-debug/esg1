@@ -512,6 +512,8 @@ export default function PortalAdminDataEntryModal({ clientId, clientName, onClos
                   <option value="Website Enquiry">Website Enquiry</option>
                   <option value="Instagram DM">Instagram DM</option>
                   <option value="Walk-in">Walk-in</option>
+                  <option value="Referral">Referral</option>
+                  <option value="Other">Other</option>
                 </select>
               </div>
 
@@ -526,6 +528,7 @@ export default function PortalAdminDataEntryModal({ clientId, clientName, onClos
                   <option value="Contacted">Contacted</option>
                   <option value="Qualified">Qualified</option>
                   <option value="Converted">Converted</option>
+                  <option value="Lost">Lost</option>
                 </select>
               </div>
 

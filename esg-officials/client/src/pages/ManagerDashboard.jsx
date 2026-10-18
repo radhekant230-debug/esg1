@@ -13,7 +13,6 @@ import {
     FaClock,
     FaUserTie,
     FaChartLine,
-    FaFileExcel,
     FaBuilding,
     FaThLarge,
     FaCalendarAlt,
@@ -22,8 +21,8 @@ import {
     FaFire,
     FaHistory,
     FaWhatsapp,
+    FaUserFriends,
 } from "react-icons/fa";
-import StateSalesDashboardView from "../components/sales/StateSalesDashboardView";
 import PlannerOverview from "../components/planner/PlannerOverview";
 import ScheduleCalendar from "../components/planner/ScheduleCalendar";
 import QuarterPlanner from "../components/planner/QuarterPlanner";
@@ -34,9 +33,9 @@ import MonthlyAnalytics from "../components/sales/MonthlyAnalytics";
 import ImportHistoryPanel from "../components/sales/ImportHistoryPanel";
 import ExcelUploadModal from "../components/sales/ExcelUploadModal";
 import ClientWhatsAppPanel from "../components/planner/ClientWhatsAppPanel";
+import ManagerEnquiries from "../components/sales/ManagerEnquiries";
 
-// Manager portal sections (order = navigation order). "sales" and "projects"
-// are the pre-existing views and are unchanged.
+// Manager portal sections (order = navigation order).
 const PORTAL_TABS = [
     { id: "overview", label: "Overview", icon: FaThLarge },
     { id: "whatsapp", label: "Client WhatsApp Contacts", icon: FaWhatsapp },
@@ -47,9 +46,9 @@ const PORTAL_TABS = [
     { id: "reminders", label: "Reminders & Notifications", icon: FaBell },
     { id: "approvals", label: "Pending Approvals", icon: FaClipboardCheck, badgeKey: "pendingApprovals" },
     { id: "escalations", label: "Escalated Tasks", icon: FaFire, badgeKey: "escalated" },
+    { id: "enquiries", label: "Leads & Enquiries", icon: FaUserFriends },
     { id: "imports", label: "Sales Import History", icon: FaHistory },
-    { id: "sales", label: "State-Wise Sales & Excel Portal", icon: FaFileExcel },
-    { id: "projects", label: "Projects & Collaboration", icon: FaProjectDiagram },
+    { id: "projects", label: "Collab", icon: FaProjectDiagram },
 ];
 
 const ManagerDashboard = () => {
@@ -342,7 +341,7 @@ const ManagerDashboard = () => {
             )}
             {portalTab === "imports" && <ImportHistoryPanel refreshKey={plannerRefresh} onImported={bumpPlanner} />}
 
-            {portalTab === "sales" && <StateSalesDashboardView />}
+            {portalTab === "enquiries" && <ManagerEnquiries />}
             {portalTab === "projects" && (
                 <div className="space-y-8">
                     {/* HEADER */}

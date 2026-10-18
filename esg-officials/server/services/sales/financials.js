@@ -83,6 +83,9 @@ function aggregate(records, { targetFor = (r) => (isNum(r.target) && r.target > 
   const marginProfit = marginPairs.reduce((s, f) => s + f.netProfit, 0);
   const profitMargin = {
     value: marginPairs.length && marginNet > 0 ? round2((marginProfit / marginNet) * 100) : null,
+    // the exact figures behind the percentage (same records on both sides)
+    netProfit: marginPairs.length ? round2(marginProfit) : null,
+    netSales: marginPairs.length ? round2(marginNet) : null,
     covered: marginPairs.length,
     total: n,
     status:

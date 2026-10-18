@@ -10,3 +10,43 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: #f9fafb;
 }
+
+/* ---- Page scrolling (client portal and dashboards) ----
+   The document itself is the scroll container: no fixed-height or
+   overflow:hidden wrappers, so wheel, touchpad, touch and keyboard
+   (Space, PgUp/PgDn, Home/End, arrows) all scroll the page. */
+html {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+
+/* Tab bar sticks directly below the client portal header */
+.portal-tabbar {
+  top: var(--portal-header-h, 61px);
+  box-shadow: 0 4px 10px -6px rgba(26, 25, 24, 0.18);
+}
+
+/* Selected section stops below header + tab bar when scrolled into view */
+.portal-tab-content,
+.portal-section-anchor {
+  scroll-margin-top: calc(var(--portal-header-h, 61px) + 60px);
+}
+
+/* Thin, visible horizontal scrollbar when the tabs overflow */
+.portal-scroll-x {
+  scrollbar-width: thin;
+  scrollbar-color: #D6CCC0 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.portal-scroll-x::-webkit-scrollbar { height: 4px; }
+.portal-scroll-x::-webkit-scrollbar-thumb { background: #D6CCC0; border-radius: 999px; }
+.portal-scroll-x::-webkit-scrollbar-track { background: transparent; }
+
+/* Visible page scrollbar */
+html::-webkit-scrollbar { width: 10px; }
+html::-webkit-scrollbar-thumb { background: #CFC6BA; border-radius: 999px; border: 2px solid #FBF9F5; }
+html::-webkit-scrollbar-track { background: transparent; }

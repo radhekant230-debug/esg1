@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthContext } from "../../context/AuthContext";
 import {
@@ -12,11 +12,28 @@ import {
 export default function ClientPortalLayout({ children }) {
   const { user, logout, isAdmin, isManager } = useContext(AuthContext);
   const navigate = useNavigate();
+  const headerRef = useRef(null);
+
+  // The dashboard tab bar sticks directly below this header; keep its offset
+  // equal to the header's real height (it wraps differently on small screens).
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return undefined;
+    const apply = () => document.documentElement.style.setProperty("--portal-header-h", `${el.offsetHeight}px`);
+    apply();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", apply);
+      return () => window.removeEventListener("resize", apply);
+    }
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#FBF9F5] text-[#1A1918] flex flex-col antialiased">
       {/* Client Portal Header */}
-      <header className="sticky top-0 z-30 bg-[#161514] text-[#F5F0E8] border-b border-[#2C2A27] px-4 sm:px-6 lg:px-8 py-3.5 shadow-md flex items-center justify-between gap-4">
+      <header ref={headerRef} className="sticky top-0 z-30 bg-[#161514] text-[#F5F0E8] border-b border-[#2C2A27] px-4 sm:px-6 lg:px-8 py-3.5 shadow-md flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <Link to="/client/dashboard" className="flex items-center gap-2.5 group">
             <svg

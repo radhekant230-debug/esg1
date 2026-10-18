@@ -102,6 +102,9 @@ export default function MonthlyAnalytics({
   const [showHistory, setShowHistory] = useState(false);
   const [autoJumped, setAutoJumped] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  // Manager Portal: month-over-month growth (replaces the profit/loss view there)
+  const showProfit = isClient;
+  const [mom, setMom] = useState(null);
   const extraKey = JSON.stringify(extraParams || {});
   const businesses = data?.scope?.available || [];
 
@@ -133,6 +136,40 @@ export default function MonthlyAnalytics({
   useEffect(() => {
     load();
   }, [load, refreshKey]);
+
+  // Last 6 whole months up to the selected period, by month, for the manager's MoM view
+  const momEnd = data?.period?.end || "";
+  useEffect(() => {
+    if (showProfit || !momEnd) return;
+    const [y, m] = momEnd.split("-").map(Number);
+    const first = new Date(Date.UTC(y, m - 1 - 5, 1));
+    const last = new Date(Date.UTC(y, m, 0));
+    const key = (d) => d.toISOString().slice(0, 10);
+    let cancelled = false;
+    api
+      .get(endpoint, { params: { ...JSON.parse(extraKey), start: key(first), end: key(last), granularity: "month", ...(businessId ? { businessId } : {}) } })
+      .then((res) => {
+        if (cancelled) return;
+        const rows = (res.data.trend || []).map((b, i, arr) => {
+          const prev = i > 0 ? arr[i - 1] : null;
+          const pct = (cur, before) => (cur != null && before != null && before > 0 ? Math.round(((cur - before) / before) * 10000) / 100 : null);
+          return {
+            label: b.label,
+            sales: b.recordedSales ?? null,
+            net: b.net ?? null,
+            orders: b.orders ?? null,
+            salesGrowth: prev ? pct(b.recordedSales, prev.recordedSales) : null,
+            netGrowth: prev ? pct(b.net, prev.net) : null,
+          };
+        });
+        setMom({ rows, error: "" });
+      })
+      .catch((err) => !cancelled && setMom({ rows: [], error: errorMessage(err, "Month-over-month data unavailable.") }));
+    return () => {
+      cancelled = true;
+    };
+  }, [showProfit, momEnd, businessId, endpoint, extraKey, refreshKey]);
+  const momLatest = mom?.rows?.length ? mom.rows[mom.rows.length - 1] : null;
 
   // Client view: open on the month of the latest data instead of an empty current month.
   useEffect(() => {
@@ -177,10 +214,14 @@ export default function MonthlyAnalytics({
         { name: "Gross sales", value: t.gross.value },
         { name: "Discounts", value: t.discount.value === null ? null : -t.discount.value },
         { name: "Net sales", value: t.net.value },
-        { name: "Cost of goods/services", value: t.cost.value === null ? null : -t.cost.value },
-        { name: "Gross profit", value: t.grossProfit.value },
-        { name: "Operating expenses", value: t.expenses.value === null ? null : -t.expenses.value },
-        { name: "Net profit / loss", value: t.netProfit.value },
+        ...(showProfit
+          ? [
+              { name: "Cost of goods/services", value: t.cost.value === null ? null : -t.cost.value },
+              { name: "Gross profit", value: t.grossProfit.value },
+              { name: "Operating expenses", value: t.expenses.value === null ? null : -t.expenses.value },
+              { name: "Net profit / loss", value: t.netProfit.value },
+            ]
+          : []),
       ]
     : [];
   const unavailable = breakdown.filter((b) => b.value === null).map((b) => b.name);
@@ -193,7 +234,7 @@ export default function MonthlyAnalytics({
     ? [
         { name: "Total sales", current: t.recordedSales.value, previous: data.previousTotals.recordedSales.value },
         { name: "Net sales", current: t.net.value, previous: data.previousTotals.net.value },
-        ...(t.netProfit.value !== null || data.previousTotals.netProfit.value !== null ? [{ name: "Net profit", current: t.netProfit.value, previous: data.previousTotals.netProfit.value }] : []),
+        ...(showProfit && (t.netProfit.value !== null || data.previousTotals.netProfit.value !== null) ? [{ name: "Net profit", current: t.netProfit.value, previous: data.previousTotals.netProfit.value }] : []),
         ...(src ? [{ name: "Report Total Sales", current: src.totalSales.value, previous: data.previousTotals.source ? data.previousTotals.source.totalSales.value : null }] : []),
       ]
     : [];
@@ -342,11 +383,41 @@ export default function MonthlyAnalytics({
                 <MetricTile label="Gross sales" m={t.gross} />
                 <MetricTile label="Discounts given" m={t.discount} />
                 <MetricTile label="Net sales" m={t.net} sub={src ? "Gross − discount" : `vs prev. ${growthText(t.growth?.net)}`} />
-                <MetricTile label="Cost of goods/services" m={t.cost} />
-                <MetricTile label="Gross profit" m={t.grossProfit} />
-                <MetricTile label="Operating expenses" m={t.expenses} />
-                <MetricTile label="Net profit / loss" m={t.netProfit} sub={t.netProfit.value === null ? "Needs cost and expenses" : ""} />
-                <MetricTile label="Profit margin" m={t.profitMargin} pct />
+                {showProfit ? (
+                  <>
+                    <MetricTile label="Cost of goods/services" m={t.cost} />
+                    <MetricTile label="Gross profit" m={t.grossProfit} />
+                    <MetricTile label="Operating expenses" m={t.expenses} />
+                    <MetricTile label="Net profit / loss" m={t.netProfit} sub={t.netProfit.value === null ? "Needs cost and expenses" : ""} />
+                    <MetricTile
+                      label="Net profit / loss margin"
+                      m={t.profitMargin}
+                      pct
+                      sub={
+                        t.profitMargin.value !== null && t.profitMargin.netSales != null
+                          ? `${formatINR(t.profitMargin.netProfit)} ÷ ${formatINR(t.profitMargin.netSales)} net sales`
+                          : t.profitMargin.status === "no_records"
+                          ? ""
+                          : "Needs net sales and net profit/loss"
+                      }
+                    />
+                  </>
+                ) : (
+                  <>
+                    <MetricTile
+                      label="MoM sales growth"
+                      m={{ value: momLatest ? momLatest.salesGrowth : null, status: t.recordCount || momLatest ? "complete" : "no_records", growth: true }}
+                      pct
+                      sub={momLatest ? `${momLatest.label} vs previous month` : "Loading…"}
+                    />
+                    <MetricTile
+                      label="MoM net sales growth"
+                      m={{ value: momLatest ? momLatest.netGrowth : null, status: t.recordCount || momLatest ? "complete" : "no_records", growth: true }}
+                      pct
+                      sub={momLatest ? `${momLatest.label} vs previous month` : "Loading…"}
+                    />
+                  </>
+                )}
                 <MetricTile
                   label="Target vs actual"
                   m={{ value: t.target.achievement, status: t.target.status, covered: t.target.covered, total: t.target.total }}
@@ -412,7 +483,7 @@ export default function MonthlyAnalytics({
                           <Line type="monotone" dataKey="recordedSales" name="Total sales" stroke={C.sales} strokeWidth={2} dot={{ r: 2 }} connectNulls={false} />
                           <Line type="monotone" dataKey="net" name="Net sales" stroke={C.net} strokeWidth={2} dot={{ r: 2 }} connectNulls={false} />
                           {src && <Line type="monotone" dataKey="reportedTotalSales" name="Total Sales (report)" stroke={C.report} strokeWidth={2} strokeDasharray="4 3" dot={false} connectNulls={false} />}
-                          {trend.some((b) => b.netProfit !== null) && <Line type="monotone" dataKey="netProfit" name="Net profit" stroke={C.profit} strokeWidth={2} dot={{ r: 2 }} connectNulls={false} />}
+                          {showProfit && trend.some((b) => b.netProfit !== null) && <Line type="monotone" dataKey="netProfit" name="Net profit" stroke={C.profit} strokeWidth={2} dot={{ r: 2 }} connectNulls={false} />}
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
@@ -441,10 +512,10 @@ export default function MonthlyAnalytics({
                   )}
                 </Card>
 
-                <Card title={`Discount and profit/loss breakdown — ${data.period.label}`} subtitle="Deductions are shown as negative bars.">
+                <Card title={showProfit ? `Discount and profit/loss breakdown — ${data.period.label}` : `Discount breakdown — ${data.period.label}`} subtitle="Deductions are shown as negative bars.">
                   {unavailable.length > 0 && (
                     <Alert tone="warn" className="mb-3">
-                      Data unavailable: {unavailable.join(", ")}.{t.netProfit.value === null ? " Profit is not shown because cost and expenses were not recorded." : ""}
+                      Data unavailable: {unavailable.join(", ")}.{showProfit && t.netProfit.value === null ? " Profit is not shown because cost and expenses were not recorded." : ""}
                     </Alert>
                   )}
                   <div className="h-64">
@@ -482,6 +553,60 @@ export default function MonthlyAnalytics({
                   </div>
                 </Card>
 
+                {!showProfit && (
+                  <Card className="xl:col-span-2" title="Month-over-month growth" subtitle="Last 6 months up to the selected period. Growth is shown only when the previous month has sales.">
+                    {!mom ? (
+                      <p className="text-xs text-gray-500">Loading…</p>
+                    ) : mom.error ? (
+                      <Alert tone="warn">{mom.error}</Alert>
+                    ) : !mom.rows.some((r) => r.sales !== null) ? (
+                      <EmptyState title="No monthly sales recorded in the last 6 months." />
+                    ) : (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <div className="h-56">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={mom.rows} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                              <CartesianGrid stroke={C.grid} vertical={false} />
+                              <XAxis dataKey="label" tick={axisTick} tickLine={false} axisLine={{ stroke: C.grid }} />
+                              <YAxis tick={axisTick} tickFormatter={(v) => `${v}%`} tickLine={false} axisLine={false} width={44} />
+                              <Tooltip formatter={(v) => (v === null || v === undefined ? "n/a" : `${v > 0 ? "+" : ""}${v}%`)} />
+                              <Legend wrapperStyle={{ fontSize: 11 }} />
+                              <Bar dataKey="salesGrowth" name="Sales MoM %" radius={[4, 4, 0, 0]}>
+                                {mom.rows.map((r) => (
+                                  <Cell key={r.label} fill={r.salesGrowth !== null && r.salesGrowth < 0 ? C.loss : C.sales} />
+                                ))}
+                              </Bar>
+                              <Bar dataKey="netGrowth" name="Net sales MoM %" fill={C.net} radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div className="overflow-x-auto border border-gray-200 rounded-xl">
+                          <table className="w-full text-xs">
+                            <thead className="bg-gray-50 text-left text-[10px] uppercase tracking-wider text-gray-600">
+                              <tr>
+                                {["Month", "Sales", "MoM", "Net sales", "MoM"].map((h, i) => (
+                                  <th key={i} className="px-3 py-2 whitespace-nowrap">{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {mom.rows.map((r) => (
+                                <tr key={r.label}>
+                                  <td className="px-3 py-2 whitespace-nowrap font-semibold">{r.label}</td>
+                                  <td className="px-3 py-2">{r.sales === null ? <span className="text-gray-400">No data</span> : formatINR(r.sales)}</td>
+                                  <td className={`px-3 py-2 font-semibold ${r.salesGrowth < 0 ? "text-red-600" : r.salesGrowth > 0 ? "text-emerald-700" : "text-gray-500"}`}>{growthText(r.salesGrowth)}</td>
+                                  <td className="px-3 py-2">{r.net === null ? <span className="text-gray-400">No data</span> : formatINR(r.net)}</td>
+                                  <td className={`px-3 py-2 font-semibold ${r.netGrowth < 0 ? "text-red-600" : r.netGrowth > 0 ? "text-emerald-700" : "text-gray-500"}`}>{growthText(r.netGrowth)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                )}
+
                 <Card className="xl:col-span-2" title={singleBusiness ? `${data.businessBreakdown[0]?.name || ""} — sales by ${bucketWord}` : label(`Business-wise comparison — ${data.period.label}`)} subtitle={singleBusiness ? data.businessBreakdown[0]?.city : "Recorded sales vs target (monthly targets, whole months only)."}>
                   {singleBusiness ? (
                     <div className="h-64">
@@ -518,7 +643,7 @@ export default function MonthlyAnalytics({
               </div>
 
               <Card
-                title={label("Business profitability table")}
+                title={label(showProfit ? "Business profitability table" : "Business sales table")}
                 subtitle={`By ${bucketWord} and ${isClient ? "location" : "business"}, for ${data.period.label}.`}
                 actions={<button type="button" className={btn.ghost} onClick={() => setShowTable((v) => !v)}>{showTable ? "Hide" : "Show"} table</button>}
               >
@@ -530,7 +655,7 @@ export default function MonthlyAnalytics({
                       <table className="w-full text-xs">
                         <thead className="bg-gray-50 text-left text-[10px] uppercase tracking-wider text-gray-600">
                           <tr>
-                            {["Period", isClient ? "Location" : "Business", "Sales", "Discount", "Net sales", "Cost", "Expenses", "Net profit / loss", "Margin", "Target %", ...(src ? ["Report Total Sales", "Bills"] : [])].map((h) => (
+                            {["Period", isClient ? "Location" : "Business", "Sales", "Discount", "Net sales", ...(showProfit ? ["Cost", "Expenses", "Net profit / loss", "Margin"] : []), "Target %", ...(src ? ["Report Total Sales", "Bills"] : [])].map((h) => (
                               <th key={h} className="px-3 py-2 whitespace-nowrap">{h}</th>
                             ))}
                           </tr>
@@ -543,10 +668,14 @@ export default function MonthlyAnalytics({
                               <td className="px-3 py-2"><MetricCell m={r.recordedSales} /></td>
                               <td className="px-3 py-2"><MetricCell m={r.discount} /></td>
                               <td className="px-3 py-2"><MetricCell m={r.net} /></td>
-                              <td className="px-3 py-2"><MetricCell m={r.cost} /></td>
-                              <td className="px-3 py-2"><MetricCell m={r.expenses} /></td>
-                              <td className="px-3 py-2"><MetricCell m={r.netProfit} /></td>
-                              <td className="px-3 py-2"><MetricCell m={r.profitMargin} pct /></td>
+                              {showProfit && (
+                                <>
+                                  <td className="px-3 py-2"><MetricCell m={r.cost} /></td>
+                                  <td className="px-3 py-2"><MetricCell m={r.expenses} /></td>
+                                  <td className="px-3 py-2"><MetricCell m={r.netProfit} /></td>
+                                  <td className="px-3 py-2"><MetricCell m={r.profitMargin} pct /></td>
+                                </>
+                              )}
                               <td className="px-3 py-2">{r.target.achievement === null ? <span className="text-gray-400">Not configured</span> : `${r.target.achievement}%`}</td>
                               {src && <td className="px-3 py-2">{r.source ? formatINR(r.source.totalSales.value) : "—"}</td>}
                               {src && <td className="px-3 py-2">{r.source ? r.source.bills.value ?? "—" : "—"}</td>}

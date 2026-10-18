@@ -5,6 +5,20 @@ const { protect, adminOrManager } = require("../middlewares/auth");
 const portalController = require("../controllers/portalController");
 const salesAnalytics = require("../controllers/salesAnalyticsController");
 const User = require("../models/User");
+const multer = require("multer");
+
+// Spreadsheet uploads for the enquiry import (kept in memory, never stored)
+const leadUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const name = (file.originalname || "").toLowerCase();
+    if (name.endsWith(".csv") || name.endsWith(".xlsx") || name.endsWith(".xls")) return cb(null, true);
+    const err = new Error("Only .csv, .xlsx and .xls files are supported.");
+    err.status = 400;
+    return cb(err);
+  },
+});
 
 // All portal routes require authentication
 router.use(protect);
@@ -97,8 +111,10 @@ router.post("/google-business", adminOrManager, portalController.addGoogleBusine
 
 // 7. Leads & Enquiries
 router.get("/leads", portalController.getLeads);
-router.post("/leads", adminOrManager, portalController.addLead);
+router.post("/leads", portalController.addLead); // clients add to their own account; managers only to assigned clients
 router.put("/leads/:id", portalController.updateLead);
+// Customer list / enquiry sheet import (CSV, XLSX, XLS): ?mode=preview then ?mode=commit
+router.post("/leads/import", leadUpload.single("file"), portalController.importLeads);
 
 // 8. Content Calendar & Approvals
 router.get("/content-calendar", portalController.getContentCalendar);

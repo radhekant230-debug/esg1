@@ -26,6 +26,9 @@ const whatsappWebhookRoutes = require("./routes/whatsappWebhook");
 
 const app = express();
 
+// Render/Vercel sit behind one proxy: use the client IP from X-Forwarded-For for rate limiting
+app.set("trust proxy", 1);
+
 // ==========================================
 // CORS
 // Allows Vercel production & preview deployments,

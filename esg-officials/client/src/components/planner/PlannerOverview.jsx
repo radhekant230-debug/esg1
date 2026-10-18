@@ -94,7 +94,12 @@ export default function PlannerOverview({ onNavigate, refreshKey = 0, onDataChan
     { label: "Total sales", m: sel?.recordedSales, sub: sel ? `MoM ${growthText(sel.growth?.recordedSales)}` : "" },
     { label: "Net sales (after discounts)", m: sel?.net },
     { label: "Discounts given", m: sel?.discount },
-    { label: "Net profit / loss", m: sel?.netProfit },
+    {
+      label: "MoM growth (net sales)",
+      m: sel ? { value: sel.growth?.net ?? null, status: sel.recordCount ? "complete" : "no_records", growth: true } : null,
+      pct: true,
+      sub: sel ? "vs previous month" : "",
+    },
     {
       label: "Target achievement",
       m: sel ? { value: sel.target.achievement, status: sel.target.status, covered: sel.target.covered, total: sel.target.total } : null,

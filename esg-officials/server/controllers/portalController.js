@@ -13,6 +13,8 @@ const ClientReport = require("../models/portal/ClientReport");
 const ClientInvoice = require("../models/portal/ClientInvoice");
 const ClientVaultDocument = require("../models/portal/ClientVaultDocument");
 const { buildClientSalesFeed, getClientSyncStamp } = require("../services/portal/clientSalesFeed");
+const ist = require("../utils/istDate");
+const leadImport = require("../services/portal/leadImport");
 
 // Helper to determine target client ID with strict authorization
 const getTargetClientId = (req) => {
@@ -565,6 +567,86 @@ exports.addGoogleBusiness = async (req, res) => {
 // 7. LEADS & CUSTOMER ENQUIRIES
 // ============================================================
 
+// Allowed values come from the ClientLead schema (fallbacks keep tests/stubs working)
+const enumOf = (field, fallback) => {
+  try {
+    const vals = ClientLead.schema.path(field).enumValues;
+    return Array.isArray(vals) && vals.length ? vals : fallback;
+  } catch (e) {
+    return fallback;
+  }
+};
+const LEAD_SOURCES = enumOf("source", ["Meta Ads", "Google Ads", "Website Enquiry", "Instagram DM", "Walk-in", "Referral", "Other"]);
+const LEAD_STATUSES = enumOf("status", ["New", "Contacted", "Qualified", "Converted", "Lost"]);
+const OPEN_STATUSES = ["New", "Contacted", "Qualified"];
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Keeps the boolean flags in step with the pipeline stage
+const syncLeadFlags = (lead) => {
+  lead.isQualified = ["Qualified", "Converted"].includes(lead.status);
+  lead.isConverted = lead.status === "Converted";
+};
+
+const monthKey = (d) => {
+  const p = ist.toISTParts(d);
+  return p ? `${p.year}-${String(p.month).padStart(2, "0")}` : undefined;
+};
+
+/**
+ * Validates the editable enquiry fields. Returns { values, error }.
+ * Only whitelisted fields are accepted (no client/owner reassignment).
+ */
+function readLeadFields(body, { partial }) {
+  const v = {};
+  const has = (k) => Object.prototype.hasOwnProperty.call(body, k);
+  if (!partial || has("name")) {
+    const name = String(body.name || "").trim();
+    if (!name) return { error: "Customer name is required." };
+    if (name.length > 120) return { error: "Customer name is too long." };
+    v.name = name;
+  }
+  if (has("email")) {
+    const email = String(body.email || "").trim().toLowerCase();
+    if (email && !EMAIL_RE.test(email)) return { error: "Enter a valid email address or leave it empty." };
+    v.email = email;
+  }
+  if (has("phone")) v.phone = String(body.phone || "").trim().slice(0, 30);
+  if (has("source")) {
+    if (!LEAD_SOURCES.includes(body.source)) return { error: `Source must be one of: ${LEAD_SOURCES.join(", ")}.` };
+    v.source = body.source;
+  }
+  if (has("campaign")) v.campaign = String(body.campaign || "").trim().slice(0, 120);
+  if (has("status")) {
+    if (!LEAD_STATUSES.includes(body.status)) return { error: `Stage must be one of: ${LEAD_STATUSES.join(", ")}.` };
+    v.status = body.status;
+  }
+  if (has("estimatedValue")) {
+    const raw = body.estimatedValue === "" || body.estimatedValue === null ? 0 : Number(body.estimatedValue);
+    if (!Number.isFinite(raw) || raw < 0) return { error: "Estimated value must be a positive amount (or 0)." };
+    if (raw > 1e10) return { error: "Estimated value is too large." };
+    v.estimatedValue = Math.round(raw * 100) / 100;
+  }
+  if (has("enquiryDate") && body.enquiryDate) {
+    const d = new Date(body.enquiryDate);
+    if (Number.isNaN(d.getTime())) return { error: "Enquiry date is not valid." };
+    v.enquiryDate = d;
+  }
+  return { values: v };
+}
+
+/** Admin: any lead. Manager: leads of clients assigned to them. Client: own leads. */
+async function canManageLead(req, lead) {
+  if (req.user.role === "admin") return true;
+  if (req.user.role === "client") return String(lead.client) === String(req.user._id);
+  if (req.user.role === "manager") {
+    const owner = await User.findOne({ _id: lead.client, role: "client", assignedManager: req.user._id }).select("_id");
+    return Boolean(owner);
+  }
+  return false;
+}
+
+const escapeRegex = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 exports.getLeads = async (req, res) => {
   try {
     let clientId = getTargetClientId(req);
@@ -573,38 +655,201 @@ exports.getLeads = async (req, res) => {
       clientId = firstClient?._id;
     }
     if (!clientId) return res.status(404).json({ message: "Client not found." });
+    const clientObjectId = new mongoose.Types.ObjectId(String(clientId));
 
-    const leads = await ClientLead.find({ client: clientId }).sort({ enquiryDate: -1 });
-
+    // Counts and values over ALL of the client's enquiries (one aggregation)
+    const groups = await ClientLead.aggregate([
+      { $match: { client: clientObjectId } },
+      { $group: { _id: "$status", n: { $sum: 1 }, paise: { $sum: { $round: [{ $multiply: [{ $ifNull: ["$estimatedValue", 0] }, 100] }, 0] } } } },
+    ]);
+    const by = Object.fromEntries(groups.map((g) => [g._id, g]));
+    const n = (st) => (by[st] ? by[st].n : 0);
+    const v = (list) => Math.round(list.reduce((sum, st) => sum + (by[st] ? by[st].paise : 0), 0)) / 100;
     const counts = {
-      total: leads.length,
-      new: leads.filter((l) => l.status === "New").length,
-      contacted: leads.filter((l) => l.status === "Contacted").length,
-      qualified: leads.filter((l) => l.status === "Qualified").length,
-      converted: leads.filter((l) => l.status === "Converted").length,
-      lost: leads.filter((l) => l.status === "Lost").length,
+      total: groups.reduce((sum, g) => sum + g.n, 0),
+      new: n("New"),
+      contacted: n("Contacted"),
+      qualified: n("Qualified"),
+      converted: n("Converted"),
+      lost: n("Lost"),
+    };
+    // Value of enquiries (what each customer is expected to be / has been charged)
+    const values = {
+      pipeline: v(OPEN_STATUSES),
+      converted: v(["Converted"]),
+      lost: v(["Lost"]),
+      total: v(LEAD_STATUSES),
     };
 
-    return res.json({ leads, counts });
+    // One page of the list (large customer imports are never sent in one go)
+    const filter = { client: clientObjectId };
+    if (req.query.status && LEAD_STATUSES.includes(req.query.status)) filter.status = req.query.status;
+    const q = String(req.query.q || "").trim().slice(0, 80);
+    if (q) {
+      const re = new RegExp(escapeRegex(q), "i");
+      filter.$or = [{ name: re }, { phone: re }, { email: re }, { campaign: re }];
+    }
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const [matching, leads] = await Promise.all([
+      ClientLead.countDocuments(filter),
+      ClientLead.find(filter).sort({ enquiryDate: -1, _id: -1 }).skip((page - 1) * limit).limit(limit),
+    ]);
+
+    return res.json({
+      leads,
+      counts,
+      values,
+      page: { page, limit, matching, pages: Math.max(1, Math.ceil(matching / limit)) },
+      options: { sources: LEAD_SOURCES, statuses: LEAD_STATUSES },
+    });
   } catch (error) {
     console.error("Get Leads Error:", error);
     return res.status(500).json({ message: "Server error fetching leads." });
   }
 };
 
+/**
+ * POST /portal/leads/import?mode=preview|commit  (multipart field "file")
+ * Imports a customer list / enquiry sheet into Leads & Enquiries.
+ * Existing customers (same phone, else email) are updated, never duplicated.
+ */
+exports.importLeads = async (req, res) => {
+  try {
+    const clientId = getTargetClientId(req);
+    if (!clientId) return res.status(400).json({ message: "Target client ID required." });
+    if (!req.file || !req.file.buffer) return res.status(400).json({ message: "Choose a CSV or Excel file to upload." });
+    const mode = req.query.mode === "commit" ? "commit" : "preview";
+    const reqSource = String(req.body?.source || "").trim();
+    const defaultSource = LEAD_SOURCES.find((s) => s.toLowerCase() === reqSource.toLowerCase()) || "Walk-in";
+
+    const sheet = leadImport.readSheetRows(req.file.buffer, req.file.originalname);
+    if (!sheet.rows.length) return res.status(400).json({ message: "The file has no data rows." });
+    if (sheet.rows.length > 50000) return res.status(400).json({ message: "Files are limited to 50,000 rows. Please split the file." });
+    const { leads, skipped, columns } = leadImport.mapRows(sheet, { sources: LEAD_SOURCES, defaultSource });
+
+    // match against the client's existing enquiries
+    const phones = leads.map((l) => l.phone).filter(Boolean);
+    const emails = leads.map((l) => l.email).filter(Boolean);
+    const existing = await ClientLead.find({ client: clientId, $or: [{ phone: { $in: phones } }, { email: { $in: emails } }] }).select("_id phone email enquiryDate");
+    const byPhone = new Map();
+    const byEmail = new Map();
+    existing.forEach((e) => {
+      if (e.phone) byPhone.set(leadImport.normPhone(e.phone) || e.phone, e);
+      if (e.email) byEmail.set(String(e.email).toLowerCase(), e);
+    });
+    const creates = [];
+    const updates = [];
+    leads.forEach((l) => {
+      const match = (l.phone && byPhone.get(l.phone)) || (l.email && byEmail.get(l.email));
+      (match ? updates : creates).push({ ...l, match });
+    });
+    const totalValue = Math.round(leads.reduce((sum, l) => sum + Math.round(l.doc.estimatedValue * 100), 0)) / 100;
+    const summary = {
+      file: req.file.originalname,
+      rows: sheet.rows.length,
+      columns,
+      toCreate: creates.length,
+      toUpdate: updates.length,
+      skipped: skipped.length,
+      skippedRows: skipped.slice(0, 50),
+      totalValue,
+      byStatus: leads.reduce((m, l) => ((m[l.doc.status] = (m[l.doc.status] || 0) + 1), m), {}),
+      sample: leads.slice(0, 8).map((l) => ({ ...l.doc, note: l.note })),
+      defaultSource,
+    };
+    if (mode === "preview") return res.json({ mode, summary });
+
+    // ---- commit ----
+    const author = req.user.name || "Import";
+    const createdAt = new Date();
+    let created = 0;
+    for (let i = 0; i < creates.length; i += 1000) {
+      const docs = creates.slice(i, i + 1000).map((l) => {
+        const status = l.doc.status;
+        return {
+          ...l.doc,
+          client: clientId,
+          reportingMonth: monthKey(l.doc.enquiryDate),
+          isQualified: ["Qualified", "Converted"].includes(status),
+          isConverted: status === "Converted",
+          notes: l.note ? [{ text: l.note, author, createdAt }] : [],
+        };
+      });
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const r = await ClientLead.insertMany(docs, { ordered: false });
+        created += r.length;
+      } catch (insertErr) {
+        if (insertErr.insertedCount) {
+          created += insertErr.insertedCount;
+        } else if (insertErr.result?.nInserted) {
+          created += insertErr.result.nInserted;
+        } else if (Array.isArray(insertErr.insertedDocs)) {
+          created += insertErr.insertedDocs.length;
+        } else {
+          throw insertErr;
+        }
+      }
+    }
+    let updated = 0;
+    for (let i = 0; i < updates.length; i += 1000) {
+      const ops = updates.slice(i, i + 1000).map((l) => {
+        // keep the stage and name the team may have edited; refresh value, latest visit and contact details
+        const set = { estimatedValue: l.doc.estimatedValue };
+        if (l.doc.campaign) set.campaign = l.doc.campaign;
+        if (!l.match.enquiryDate || l.doc.enquiryDate > l.match.enquiryDate) {
+          set.enquiryDate = l.doc.enquiryDate;
+          set.reportingMonth = monthKey(l.doc.enquiryDate);
+        }
+        if (l.phone && !l.match.phone) set.phone = l.phone;
+        if (l.email && !l.match.email) set.email = l.email;
+        return { updateOne: { filter: { _id: l.match._id, client: clientId }, update: { $set: set } } };
+      });
+      if (ops.length) {
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const r = await ClientLead.bulkWrite(ops, { ordered: false });
+          updated += r.modifiedCount ?? r.nModified ?? 0;
+        } catch (writeErr) {
+          if (writeErr.result?.nModified) {
+            updated += writeErr.result.nModified;
+          } else {
+            throw writeErr;
+          }
+        }
+      }
+    }
+    return res.json({ mode, summary, result: { created, updated, unchanged: updates.length - updated, skipped: skipped.length } });
+  } catch (error) {
+    console.error("Import Leads Error:", error.message);
+    if (error.status === 400) return res.status(400).json({ message: error.message });
+    return res.status(500).json({ message: error.message || "Server error importing the file." });
+  }
+};
+
 exports.addLead = async (req, res) => {
   try {
-    let clientId = getTargetClientId(req);
+    const clientId = getTargetClientId(req);
     if (!clientId) return res.status(400).json({ message: "Target client ID required." });
 
-    const newLead = await ClientLead.create({
-      ...req.body,
-      client: clientId,
-    });
+    const { values, error } = readLeadFields(req.body, { partial: false });
+    if (error) return res.status(400).json({ message: error });
 
-    return res.status(201).json({ message: "Lead recorded.", lead: newLead });
+    const lead = new ClientLead({ ...values, client: clientId });
+    if (!lead.enquiryDate) lead.enquiryDate = new Date();
+    lead.reportingMonth = monthKey(lead.enquiryDate);
+    syncLeadFlags(lead);
+    const firstNote = req.body.noteText || (Array.isArray(req.body.notes) && req.body.notes[0] && req.body.notes[0].text);
+    if (firstNote && String(firstNote).trim()) {
+      lead.notes.push({ text: String(firstNote).trim().slice(0, 2000), author: req.user.name, createdAt: new Date() });
+    }
+    await lead.save();
+
+    return res.status(201).json({ message: "Lead recorded.", lead });
   } catch (error) {
     console.error("Add Lead Error:", error);
+    if (error.name === "ValidationError") return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Server error creating lead." });
   }
 };
@@ -612,20 +857,29 @@ exports.addLead = async (req, res) => {
 exports.updateLead = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, noteText } = req.body;
+    if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: "Invalid lead id." });
 
     const lead = await ClientLead.findById(id);
     if (!lead) return res.status(404).json({ message: "Lead not found." });
 
-    // Client authorization check
-    if (req.user.role === "client" && lead.client.toString() !== req.user._id.toString()) {
+    if (!(await canManageLead(req, lead))) {
       return res.status(403).json({ message: "Unauthorized." });
     }
 
-    if (status) lead.status = status;
+    // Owner client, assigned manager and admins may edit every enquiry field
+    // (ownership is checked above; the client/owner itself can never be changed)
+    const body = { ...req.body };
+    const { values, error } = readLeadFields(body, { partial: true });
+    if (error) return res.status(400).json({ message: error });
+
+    Object.assign(lead, values);
+    if (values.enquiryDate) lead.reportingMonth = monthKey(values.enquiryDate);
+    syncLeadFlags(lead);
+
+    const noteText = body.noteText && String(body.noteText).trim();
     if (noteText) {
       lead.notes.push({
-        text: noteText,
+        text: noteText.slice(0, 2000),
         author: req.user.name,
         createdAt: new Date(),
       });
@@ -635,6 +889,7 @@ exports.updateLead = async (req, res) => {
     return res.json({ message: "Lead updated.", lead });
   } catch (error) {
     console.error("Update Lead Error:", error);
+    if (error.name === "ValidationError") return res.status(400).json({ message: error.message });
     return res.status(500).json({ message: "Server error updating lead." });
   }
 };
@@ -993,3 +1248,6 @@ exports.getAllClientsForSelector = async (req, res) => {
     return res.status(500).json({ message: "Server error fetching client selector." });
   }
 };
+
+// exposed for unit tests
+exports._leadInternals = { readLeadFields, syncLeadFlags, canManageLead };

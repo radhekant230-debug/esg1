@@ -1,5 +1,7 @@
 import React, { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
+import EmailOtpLogin from "../components/auth/EmailOtpLogin";
+import { dashboardPath } from "../utils/dashboardPath";
 import { useNavigate, Link } from "react-router-dom";
 import { FaShieldAlt, FaLock, FaUserShield, FaArrowLeft, FaEye, FaEyeSlash } from "react-icons/fa";
 
@@ -12,6 +14,7 @@ const AdminLogin = () => {
 
     const { login, logout } = useContext(AuthContext);
     const navigate = useNavigate();
+    const [useEmailCode, setUseEmailCode] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -84,6 +87,10 @@ const AdminLogin = () => {
                 )}
 
                 {/* Form */}
+                {useEmailCode ? (
+                    <EmailOtpLogin portal={"admin"} theme="amber" onSuccess={(data) => navigate(dashboardPath(data.role))} onUsePassword={() => setUseEmailCode(false)} />
+                ) : (
+                <>
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div>
                         <label className="block text-xs font-mono uppercase tracking-wider text-stone-300 font-semibold mb-2">
@@ -149,6 +156,16 @@ const AdminLogin = () => {
                         )}
                     </button>
                 </form>
+                <p className="text-center text-xs mt-4">
+                    <button type="button" className="text-stone-400 hover:text-stone-200 underline cursor-pointer" onClick={() => setUseEmailCode(true)}>
+                        Sign in with an email code instead
+                    </button>
+                </p>
+                <p className="text-center text-xs mt-2">
+                    <Link to="/forgot-password" className="text-stone-400 hover:text-stone-200 underline">Forgot password?</Link>
+                </p>
+                </>
+                )}
 
                 {/* Security Footer Note */}
                 <div className="mt-8 pt-6 border-t border-stone-800 text-center">

@@ -7,7 +7,7 @@ import axios from "axios";
  * 3. Defaults to "http://localhost:5000/api" for local dev.
  */
 const getBaseUrl = () => {
-    const raw = (import.meta.env.VITE_API_URL || "").trim();
+    const raw = (import.meta.env?.VITE_API_URL || "").trim();
     if (!raw) {
         return "http://localhost:5000/api";
     }
@@ -28,7 +28,20 @@ api.interceptors.request.use(
         if (config.url) {
             config.url = config.url.replace(/^\/?api\//, "/");
         }
-        const token = localStorage.getItem("token");
+        if (config.data instanceof FormData) {
+            // Remove application/json Content-Type so browser/Axios automatically sets
+            // multipart/form-data with the correct boundary
+            if (config.headers) {
+                if (typeof config.headers.delete === "function") {
+                    config.headers.delete("Content-Type");
+                    config.headers.delete("content-type");
+                } else {
+                    delete config.headers["Content-Type"];
+                    delete config.headers["content-type"];
+                }
+            }
+        }
+        const token = typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
@@ -48,10 +61,10 @@ api.interceptors.response.use(
                 error.config?.url?.includes("/auth/login") ||
                 error.config?.url?.includes("/login");
 
-            if (!isLoginAttempt) {
+            if (!isLoginAttempt && typeof localStorage !== "undefined") {
                 localStorage.removeItem("token");
                 localStorage.removeItem("userInfo");
-                if (window.location.pathname !== "/login") {
+                if (typeof window !== "undefined" && window.location.pathname !== "/login") {
                     window.location.href = "/login";
                 }
             }

@@ -24,6 +24,7 @@ import Register from "./pages/Register";
 import AdminLogin from "./pages/AdminLogin";
 import ManagerLogin from "./pages/ManagerLogin";
 import ClientLogin from "./pages/ClientLogin";
+import ForgotPassword from "./pages/ForgotPassword";
 import AdminDashboard from "./pages/AdminDashboard";
 import ClientDashboard from "./pages/ClientDashboard";
 import ClientPortalLayout from "./components/portal/ClientPortalLayout";
@@ -194,6 +195,7 @@ const App = () => {
                 <Route path="/admin/login" element={<AdminLogin />} />
                 <Route path="/manager/login" element={<ManagerLogin />} />
                 <Route path="/client/login" element={<ClientLogin />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
 
                 {/* Legacy / Shared Login */}
                 <Route
@@ -612,6 +614,8 @@ const App = () => {
                     }
                 />
                 <Route path="/manager" element={<Navigate to="/manager/dashboard" replace />} />
+                <Route path="/manager/sales" element={<Navigate to="/manager/dashboard" replace />} />
+                <Route path="/manager/state-sales" element={<Navigate to="/manager/dashboard" replace />} />
 
                 {/* Projects */}
                 <Route

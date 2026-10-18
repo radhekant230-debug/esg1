@@ -1,5 +1,7 @@
 import React, { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
+import EmailOtpLogin from "../components/auth/EmailOtpLogin";
+import { dashboardPath } from "../utils/dashboardPath";
 import { useNavigate, Link } from "react-router-dom";
 
 const Login = () => {
@@ -15,6 +17,7 @@ const Login = () => {
 
     const { login, verifyOTP } = useContext(AuthContext);
     const navigate = useNavigate();
+    const [useEmailCode, setUseEmailCode] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -117,6 +120,10 @@ const Login = () => {
                 </div>
             )}
 
+            {useEmailCode ? (
+                <EmailOtpLogin theme="light" onSuccess={(data) => navigate(dashboardPath(data.role))} onUsePassword={() => setUseEmailCode(false)} />
+            ) : (
+            <>
             <form
                 onSubmit={handleSubmit}
                 className="space-y-6"
@@ -264,6 +271,16 @@ const Login = () => {
                         : "Sign In"}
                 </button>
             </form>
+            <p className="text-center text-xs mt-4">
+                <button type="button" className="text-gray-600 hover:text-gray-900 underline cursor-pointer" onClick={() => setUseEmailCode(true)}>
+                    Sign in with an email code instead
+                </button>
+            </p>
+            <p className="text-center text-xs mt-2">
+                <Link to="/forgot-password" className="text-gray-600 hover:text-gray-900 underline">Forgot password?</Link>
+            </p>
+            </>
+            )}
 
             {/* Register */}
             <p className="text-center mt-8 text-gray-600">

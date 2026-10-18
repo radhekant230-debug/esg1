@@ -36,6 +36,14 @@ const app = require("./app");
 // ==========================================
 const PORT = process.env.PORT || 5000;
 
+// Email configuration check (never prints secret values)
+try {
+    const { checkEmailConfig } = require("./utils/email");
+    checkEmailConfig().forEach((p) => console.warn(`[email] ${p}`));
+} catch (e) {
+    console.warn("[email] configuration check skipped:", e.message);
+}
+
 mongoose
     .connect(process.env.MONGO_URI, { dbName: "esg-official-clients" })
     .then(async () => {

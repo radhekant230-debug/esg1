@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { AuthContext } from "../context/AuthContext";
 import api from "../utils/axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -29,6 +29,10 @@ import {
   FaDownload,
   FaShieldAlt,
   FaCalendarAlt,
+  FaChevronDown,
+  FaChevronUp,
+  FaThList,
+  FaBars,
 } from "react-icons/fa";
 
 // Tab Components
@@ -56,7 +60,8 @@ export default function ClientDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Active Tab state
-  const currentTab = searchParams.get("tab") || "overview";
+  const rawTab = searchParams.get("tab") || "overview";
+  const currentTab = rawTab === "scheduling" ? "schedule" : rawTab;
   const [activeTab, setActiveTab] = useState(currentTab);
 
   // Client Selector (Admin & Manager)
@@ -83,13 +88,60 @@ export default function ClientDashboard() {
   // Admin Data Entry Modal
   const [showDataModal, setShowDataModal] = useState(false);
 
-  // Sync tab with URL
+  // Navigation View Mode: "dropdown" (default as requested) or "tabs"
+  const [navMode, setNavMode] = useState("dropdown");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    if (isDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [isDropdownOpen]);
+
+  // Sync tab with URL and reset main content scroll position to top
   const handleTabChange = (tabKey) => {
     setActiveTab(tabKey);
     const params = new URLSearchParams(searchParams);
     params.set("tab", tabKey);
-    setSearchParams(params);
+    setSearchParams(params, { replace: true });
+
+    // On every tab change, reset main content scroll position to top so heading and content appear immediately
+    requestAnimationFrame(() => {
+      const section = document.getElementById("portal-tab-content");
+      if (section) {
+        const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        section.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+      }
+
+      // Keep chosen tab visible in horizontally scrolled tab bar
+      const btn = document.getElementById(`portal-tab-${tabKey}`);
+      const bar = btn && btn.closest(".portal-tabbar");
+      if (btn && bar) {
+        const b = btn.getBoundingClientRect();
+        const r = bar.getBoundingClientRect();
+        if (b.left < r.left || b.right > r.right) {
+          bar.scrollTo({ left: bar.scrollLeft + (b.left - r.left) - (r.width - b.width) / 2, behavior: "smooth" });
+        }
+      }
+    });
   };
+
+  // Sync tab from URL if present on load or URL changes
+  useEffect(() => {
+    const requested = searchParams.get("tab");
+    const normalized = requested === "scheduling" ? "schedule" : requested;
+    if (normalized && normalized !== activeTab) {
+      setActiveTab(normalized);
+    }
+  }, [searchParams]);
 
   // Sync client selection
   const handleClientChange = (newClientId) => {
@@ -212,49 +264,60 @@ export default function ClientDashboard() {
     "invoices",
   ];
 
-  // Tab definitions
-  const tabs = [
-    { id: "overview", label: "Executive Overview", icon: FaChartPie, serviceKey: "overview" },
-    { id: "analytics", label: "Monthly Analytics", icon: FaChartLine, serviceKey: "analytics" },
-    { id: "sales", label: "Sales & Revenue", icon: FaDollarSign, serviceKey: "sales" },
-    { id: "advertising", label: "Advertising", icon: FaBullhorn, serviceKey: "advertising" },
-    { id: "social", label: "Social Media", icon: FaShareAlt, serviceKey: "social" },
-    { id: "google_business", label: "Local Marketing", icon: FaMapMarkerAlt, serviceKey: "google_business" },
-    { id: "leads", label: "Leads & Enquiries", icon: FaUserFriends, serviceKey: "leads" },
+  // 8 Main sequential sections requested
+  const mainSections = [
+    { id: "overview", number: 1, label: "Executive Overview", icon: FaChartPie, serviceKey: "overview" },
+    { id: "analytics", number: 2, label: "Monthly Analytics", icon: FaChartLine, serviceKey: "analytics" },
+    { id: "sales", number: 3, label: "Sales & Revenue", icon: FaDollarSign, serviceKey: "sales" },
+    { id: "advertising", number: 4, label: "Advertising", icon: FaBullhorn, serviceKey: "advertising" },
+    { id: "google_business", number: 5, label: "Local Marketing", icon: FaMapMarkerAlt, serviceKey: "google_business" },
+    { id: "leads", number: 6, label: "Leads & Enquiries", icon: FaUserFriends, serviceKey: "leads" },
     {
       id: "content_calendar",
+      number: 7,
       label: "Content Approvals",
       icon: FaCalendarCheck,
       serviceKey: "content_calendar",
       badge: contentData?.counts?.pendingApproval || 0,
     },
-    { id: "schedule", label: "Schedule & Calendar", icon: FaCalendarAlt, serviceKey: "schedule" },
+    { id: "schedule", number: 8, label: "Schedule & Calendar", icon: FaCalendarAlt, serviceKey: "schedule" },
+  ];
+
+  // The 8 numbered sections are always displayed in the horizontal single-row navigation bar
+  const visibleMainSections = mainSections;
+
+  const activeSection =
+    mainSections.find((s) => s.id === activeTab) ||
+    mainSections[0];
+
+  // Additional modules (shown after the numbered sections, in the same row)
+  const additionalSections = [
+    { id: "social", label: "Social Media", icon: FaShareAlt, serviceKey: "social" },
     { id: "workspace", label: "Work in Progress", icon: FaTasks, serviceKey: "workspace" },
     { id: "reports", label: "Reports & Insights", icon: FaFileAlt, serviceKey: "reports" },
     { id: "vault", label: "Brand Vault", icon: FaFolder, serviceKey: "vault" },
     { id: "invoices", label: "Commercials & Invoices", icon: FaFileInvoiceDollar, serviceKey: "invoices" },
-    {
-      id: "risks",
-      label: "Risk & Mitigation Approvals",
-      icon: FaShieldAlt,
-      serviceKey: "risks",
-    },
+    { id: "risks", label: "Risk & Mitigation Approvals", icon: FaShieldAlt, serviceKey: "risks" },
     { id: "settings", label: "Profile & Settings", icon: FaCog, serviceKey: "settings" },
   ];
 
-  // Filter tabs by purchased services (Admin and Manager see all)
-  const visibleTabs = (isAdmin || isManager)
-    ? tabs
-    : tabs.filter(
+  // Filter additional sections by purchased services (Admin and Manager see all)
+  const visibleAdditionalSections = (isAdmin || isManager)
+    ? additionalSections
+    : additionalSections.filter(
         (t) =>
-          t.id === "overview" ||
-          t.id === "analytics" || // own sales analytics (server-scoped; empty state when nothing is linked)
           t.id === "settings" ||
           t.id === "risks" ||
-          t.id === "schedule" ||
           purchasedServices.includes(t.serviceKey) ||
           purchasedServices.includes(t.id)
       );
+
+  // A section the client has not purchased (e.g. typed into the URL) falls back to the overview
+  const allowedSectionIds = [...visibleMainSections, ...visibleAdditionalSections].map((t) => t.id);
+  useEffect(() => {
+    if (profileData && activeTab && !allowedSectionIds.includes(activeTab)) setActiveTab("overview");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, profileData, allowedSectionIds.join(",")]);
 
   const getBusinessTypeBadge = (type) => {
     switch (type) {
@@ -416,123 +479,443 @@ export default function ClientDashboard() {
       </div>
 
       {/* =========================================================
-          3. MODULAR PORTAL NAVIGATION TABS
+          3. PORTAL NAVIGATION (DROPDOWN BY DEFAULT + TABS TOGGLE)
       ========================================================= */}
-      <div className="border-b border-[#E7DFD5] overflow-x-auto scrollbar-none">
-        <nav className="flex space-x-1 sm:space-x-2 py-1 min-w-max">
-          {visibleTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-
-            return (
+      <div className="portal-tabbar sticky z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 bg-[#FAF7F2] border-b border-[#E7DFD5] shadow-xs">
+        {navMode === "dropdown" ? (
+          /* Dropdown Menu View (Matches user's screenshot exactly) */
+          <div className="flex items-center justify-between gap-3 py-2.5">
+            <div className="relative" ref={dropdownRef}>
               <button
-                key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
-                className={`flex items-center gap-2 px-3.5 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer shrink-0 ${
-                  isActive
-                    ? "bg-[#1A1A1A] text-white shadow-xs font-semibold"
-                    : "text-stone-600 hover:text-stone-900 hover:bg-white/80"
-                }`}
+                id="portal-select-section-btn"
+                type="button"
+                aria-expanded={isDropdownOpen}
+                aria-haspopup="true"
+                onClick={() => setIsDropdownOpen((prev) => !prev)}
+                className="inline-flex items-center gap-2.5 px-3.5 sm:px-4 py-2 rounded-xl bg-[#FAF7F2] hover:bg-[#F3EFE7] border border-[#E7DFD5] text-stone-900 font-medium text-sm transition shadow-2xs cursor-pointer group"
               >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? "text-[#D4AF37]" : "text-stone-400"}`} />
-                <span>{tab.label}</span>
-                {tab.badge > 0 && (
-                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-black">
-                    {tab.badge}
-                  </span>
-                )}
+                <FaThList className="w-4 h-4 text-stone-700 shrink-0" />
+                <span className="font-semibold text-stone-900 tracking-tight">
+                  Select Section
+                </span>
+                <span className="text-xs text-stone-500 font-mono hidden md:inline">
+                  • {activeSection.number ? `${activeSection.number}. ` : ""}{activeSection.label}
+                </span>
+                <FaChevronDown
+                  className={`w-3.5 h-3.5 text-stone-500 group-hover:text-stone-900 transition-transform duration-200 ml-1 ${
+                    isDropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
               </button>
-            );
-          })}
-        </nav>
+
+              {/* Floating Dropdown Card (Matches Screenshot) */}
+              {isDropdownOpen && (
+                <div className="absolute left-0 top-full mt-2 w-72 sm:w-80 bg-white border border-[#E7DFD5] rounded-2xl shadow-xl z-50 p-2 space-y-0.5 animate-fadeIn">
+                  {visibleMainSections.map((sec) => {
+                    const Icon = sec.icon;
+                    const isActive = activeTab === sec.id;
+                    return (
+                      <button
+                        key={sec.id}
+                        type="button"
+                        onClick={() => {
+                          handleTabChange(sec.id);
+                          setIsDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left text-sm transition cursor-pointer ${
+                          isActive
+                            ? "bg-[#FAF4E8] text-stone-950 font-semibold"
+                            : "text-stone-700 hover:bg-[#F9F7F2] hover:text-stone-950 font-medium"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Gold vertical indicator bar on active item */}
+                          {isActive ? (
+                            <span className="w-1 h-5 bg-[#C59B27] rounded-full shrink-0 -ml-1 mr-0.5" />
+                          ) : (
+                            <span className="w-1 h-5 invisible shrink-0 -ml-1 mr-0.5" />
+                          )}
+                          <Icon
+                            className={`w-4 h-4 shrink-0 ${
+                              isActive ? "text-[#C59B27]" : "text-[#8C827A]"
+                            }`}
+                          />
+                          <span className="tracking-tight">
+                            {sec.number}. {sec.label}
+                          </span>
+                        </div>
+
+                        {sec.badge > 0 && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#D4AF37] text-stone-950">
+                            {sec.badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* View Mode Switcher */}
+            <div className="flex items-center gap-1 bg-[#F2ECE3] p-1 rounded-xl border border-[#E7DFD5] text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setNavMode("dropdown")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  navMode === "dropdown"
+                    ? "bg-[#161514] text-white font-semibold shadow-2xs"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+                title="Dropdown Menu View (Default)"
+              >
+                <FaThList className="w-3 h-3" />
+                <span>Dropdown</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNavMode("tabs")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  navMode === "tabs"
+                    ? "bg-[#161514] text-white font-semibold shadow-2xs"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+                title="Horizontal Tab Bar View"
+              >
+                <FaBars className="w-3 h-3" />
+                <span>Tabs</span>
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Horizontal Single-Row Tabs View */
+          <div className="flex items-center justify-between gap-3 py-2">
+            <div className="overflow-x-auto overscroll-x-contain portal-scroll-x flex-1 mr-2">
+              <nav aria-label="Client portal sections" className="flex flex-nowrap items-center gap-1.5 sm:gap-2 min-w-max">
+                {visibleMainSections.map((section) => {
+                  const Icon = section.icon;
+                  const isActive = activeTab === section.id;
+
+                  return (
+                    <button
+                      key={section.id}
+                      id={`portal-tab-${section.id}`}
+                      type="button"
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={() => handleTabChange(section.id)}
+                      className={`flex items-center gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-xs sm:text-[13px] whitespace-nowrap transition cursor-pointer shrink-0 ${
+                        isActive
+                          ? "bg-[#161514] text-white font-semibold shadow-xs"
+                          : "bg-[#F2ECE3] text-[#5C5449] font-medium hover:bg-[#EAE2D6] hover:text-[#231F1A]"
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? "text-[#D4AF37]" : "text-[#9E9487]"}`} />
+                      <span>
+                        {section.number}. {section.label}
+                      </span>
+                      {section.badge > 0 && (
+                        <span
+                          className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                            isActive
+                              ? "bg-[#D4AF37] text-stone-950"
+                              : "bg-[#D4AF37]/25 text-[#7A5B22] border border-[#D4AF37]/30"
+                          }`}
+                        >
+                          {section.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+
+            {/* View Mode Switcher */}
+            <div className="flex items-center gap-1 bg-[#F2ECE3] p-1 rounded-xl border border-[#E7DFD5] text-xs font-medium shrink-0">
+              <button
+                type="button"
+                onClick={() => setNavMode("dropdown")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  navMode === "dropdown"
+                    ? "bg-[#161514] text-white font-semibold shadow-2xs"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+                title="Dropdown Menu View (Default)"
+              >
+                <FaThList className="w-3 h-3" />
+                <span>Dropdown</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setNavMode("tabs")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                  navMode === "tabs"
+                    ? "bg-[#161514] text-white font-semibold shadow-2xs"
+                    : "text-stone-600 hover:text-stone-900"
+                }`}
+                title="Horizontal Tab Bar View"
+              >
+                <FaBars className="w-3 h-3" />
+                <span>Tabs</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* =========================================================
-          4. TAB VIEW CONTENT
+          4. TAB VIEW CONTENT (SINGLE SELECTED SECTION ONLY)
       ========================================================= */}
-      <div className="pt-2">
-        {activeTab === "overview" && (
-          <ExecutiveOverviewTab
-            data={overviewData}
-            businessType={businessType}
-            onNavigateTab={handleTabChange}
-          />
-        )}
-
+      <div id="portal-tab-content" className="pt-2 portal-tab-content">
+        {/* Real-time Sales Notice */}
         {sync.updatedNotice && (
-          <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <div role="status" className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 shadow-xs">
             <span>
               <strong>New sales data from your account manager.</strong> Your dashboard was refreshed automatically
               {sync.lastUpdatedLabel ? ` (last update ${sync.lastUpdatedLabel})` : ""}.
             </span>
-            <button type="button" onClick={sync.dismiss} className="text-emerald-800 hover:text-emerald-950 font-bold" aria-label="Dismiss">
+            <button type="button" onClick={sync.dismiss} className="text-emerald-800 hover:text-emerald-950 font-bold cursor-pointer" aria-label="Dismiss">
               ×
             </button>
           </div>
         )}
 
+        {/* 1. Executive Overview */}
+        {activeTab === "overview" && (
+          <div id="section-overview" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#161514] flex items-center justify-center text-[#D4AF37] shrink-0 shadow-2xs">
+                <FaChartPie className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                1. Executive Overview
+              </h2>
+            </div>
+            <ExecutiveOverviewTab
+              data={overviewData}
+              businessType={businessType}
+              onNavigateTab={handleTabChange}
+            />
+          </div>
+        )}
+
+        {/* 2. Monthly Analytics */}
         {activeTab === "analytics" && (
-          <ClientMonthlySales clientId={isAdmin || isManager ? selectedClientId : ""} refreshKey={salesRefreshKey} />
+          <div id="section-analytics" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#161514] flex items-center justify-center text-[#D4AF37] shrink-0 shadow-2xs">
+                <FaChartLine className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                2. Monthly Analytics
+              </h2>
+            </div>
+            <ClientMonthlySales clientId={isAdmin || isManager ? selectedClientId : ""} refreshKey={salesRefreshKey} />
+          </div>
         )}
 
+        {/* 3. Sales & Revenue */}
         {activeTab === "sales" && (
-          <SalesPerformanceTab
-            salesData={salesData}
-            businessType={businessType}
-            onOpenAnalytics={() => handleTabChange("analytics")}
-          />
+          <div id="section-sales" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#161514] flex items-center justify-center text-[#D4AF37] shrink-0 shadow-2xs">
+                <FaDollarSign className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                3. Sales & Revenue
+              </h2>
+            </div>
+            <SalesPerformanceTab
+              salesData={salesData}
+              businessType={businessType}
+              onOpenAnalytics={() => handleTabChange("analytics")}
+            />
+          </div>
         )}
 
+        {/* 4. Advertising */}
         {activeTab === "advertising" && (
-          <AdvertisingTab campaignData={campaignData} />
+          <div id="section-advertising" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#161514] flex items-center justify-center text-[#D4AF37] shrink-0 shadow-2xs">
+                <FaBullhorn className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                4. Advertising
+              </h2>
+            </div>
+            <AdvertisingTab campaignData={campaignData} />
+          </div>
         )}
 
-        {activeTab === "social" && (
-          <SocialMediaTab socialData={socialData} />
-        )}
-
+        {/* 5. Local Marketing */}
         {activeTab === "google_business" && (
-          <LocalMarketingTab gbpData={gbpData} />
+          <div id="section-google_business" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#161514] flex items-center justify-center text-[#D4AF37] shrink-0 shadow-2xs">
+                <FaMapMarkerAlt className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                5. Local Marketing
+              </h2>
+            </div>
+            <LocalMarketingTab gbpData={gbpData} />
+          </div>
         )}
 
+        {/* 6. Leads & Enquiries */}
         {activeTab === "leads" && (
-          <LeadsPipelineTab leadsData={leadsData} onRefresh={fetchAllPortalData} />
+          <div id="section-leads" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#161514] flex items-center justify-center text-[#D4AF37] shrink-0 shadow-2xs">
+                <FaUserFriends className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                6. Leads & Enquiries
+              </h2>
+            </div>
+            <LeadsPipelineTab leadsData={leadsData} onRefresh={fetchAllPortalData} clientId={selectedClientId || clientUser?._id || ""} />
+          </div>
         )}
 
+        {/* 7. Content Approvals */}
         {activeTab === "content_calendar" && (
-          <ContentApprovalsTab contentData={contentData} onRefresh={fetchAllPortalData} />
+          <div id="section-content_calendar" className="space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-[#E7DFD5]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-[#161514] flex items-center justify-center text-[#D4AF37] shrink-0 shadow-2xs">
+                  <FaCalendarCheck className="w-3.5 h-3.5" />
+                </div>
+                <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                  7. Content Approvals
+                </h2>
+              </div>
+              {contentData?.counts?.pendingApproval > 0 && (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#D4AF37] text-stone-950">
+                  {contentData.counts.pendingApproval} Pending Review
+                </span>
+              )}
+            </div>
+            <ContentApprovalsTab contentData={contentData} onRefresh={fetchAllPortalData} />
+          </div>
         )}
 
+        {/* 8. Scheduling */}
         {activeTab === "schedule" && (
-          <ClientScheduleTab clientId={isAdmin || isManager ? selectedClientId || clientUser?._id : ""} />
+          <div id="section-schedule" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#161514] flex items-center justify-center text-[#D4AF37] shrink-0 shadow-2xs">
+                <FaCalendarAlt className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                8. Schedule & Calendar
+              </h2>
+            </div>
+            <ClientScheduleTab clientId={isAdmin || isManager ? selectedClientId || clientUser?._id : ""} />
+          </div>
+        )}
+
+        {/* Additional Modules */}
+        {activeTab === "social" && (
+          <div id="section-social" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#9C7A42]/10 border border-[#9C7A42]/20 flex items-center justify-center text-[#9C7A42] shrink-0">
+                <FaShareAlt className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                Social Media Performance
+              </h2>
+            </div>
+            <SocialMediaTab socialData={socialData} />
+          </div>
         )}
 
         {activeTab === "workspace" && (
-          <WorkInProgressTab workspaceData={workspaceData} />
+          <div id="section-workspace" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#9C7A42]/10 border border-[#9C7A42]/20 flex items-center justify-center text-[#9C7A42] shrink-0">
+                <FaTasks className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                Work in Progress
+              </h2>
+            </div>
+            <WorkInProgressTab workspaceData={workspaceData} />
+          </div>
         )}
 
         {activeTab === "reports" && (
-          <ReportsInsightsTab reportsData={reportsData} />
+          <div id="section-reports" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#9C7A42]/10 border border-[#9C7A42]/20 flex items-center justify-center text-[#9C7A42] shrink-0">
+                <FaFileAlt className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                Reports & Insights
+              </h2>
+            </div>
+            <ReportsInsightsTab reportsData={reportsData} />
+          </div>
         )}
 
         {activeTab === "vault" && (
-          <ResourceVaultTab vaultData={vaultData} />
+          <div id="section-vault" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#9C7A42]/10 border border-[#9C7A42]/20 flex items-center justify-center text-[#9C7A42] shrink-0">
+                <FaFolder className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                Brand Vault
+              </h2>
+            </div>
+            <ResourceVaultTab vaultData={vaultData} />
+          </div>
         )}
 
         {activeTab === "invoices" && (
-          <CommercialsInvoicesTab invoicesData={invoicesData} />
+          <div id="section-invoices" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#9C7A42]/10 border border-[#9C7A42]/20 flex items-center justify-center text-[#9C7A42] shrink-0">
+                <FaFileInvoiceDollar className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                Commercials & Invoices
+              </h2>
+            </div>
+            <CommercialsInvoicesTab invoicesData={invoicesData} />
+          </div>
         )}
 
         {activeTab === "risks" && (
-          <RiskMitigationTab clientId={selectedClientId || clientUser?._id} />
+          <div id="section-risks" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#9C7A42]/10 border border-[#9C7A42]/20 flex items-center justify-center text-[#9C7A42] shrink-0">
+                <FaShieldAlt className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                Risk & Mitigation Approvals
+              </h2>
+            </div>
+            <RiskMitigationTab clientId={selectedClientId || clientUser?._id} />
+          </div>
         )}
 
         {activeTab === "settings" && (
-          <ClientProfileSettingsTab
-            profile={profileData}
-            clientUser={clientUser}
-            onRefresh={fetchAllPortalData}
-          />
+          <div id="section-settings" className="space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-[#E7DFD5]">
+              <div className="w-7 h-7 rounded-lg bg-[#9C7A42]/10 border border-[#9C7A42]/20 flex items-center justify-center text-[#9C7A42] shrink-0">
+                <FaCog className="w-3.5 h-3.5" />
+              </div>
+              <h2 className="font-serif text-lg sm:text-xl font-bold text-stone-900 tracking-tight">
+                Profile & Settings
+              </h2>
+            </div>
+            <ClientProfileSettingsTab
+              profile={profileData}
+              clientUser={clientUser}
+              onRefresh={fetchAllPortalData}
+            />
+          </div>
         )}
       </div>
 

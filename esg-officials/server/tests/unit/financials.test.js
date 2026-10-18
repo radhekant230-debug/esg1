@@ -64,3 +64,19 @@ test("reported Profit/Loss is used only when profit cannot be calculated", () =>
   assert.equal(calc.netProfit, 500);
   assert.equal(calc.netProfitSource, "calculated");
 });
+
+test("net profit/loss margin = net profit ÷ net sales over the same records, with its basis", () => {
+  const m = aggregate([A, B, C]);
+  // A: 20000 / 90000, B: -5000 / 45000 -> 15000 / 135000; C has neither, so it is left out of both sides
+  assert.deepEqual([m.profitMargin.netProfit, m.profitMargin.netSales, m.profitMargin.value], [15000, 135000, 11.11]);
+  assert.equal(m.profitMargin.status, "partial");
+  // a loss gives a negative margin
+  const loss = aggregate([B]);
+  assert.deepEqual([loss.profitMargin.value, loss.profitMargin.netProfit, loss.profitMargin.netSales], [-11.11, -5000, 45000]);
+  // reported profit is used when cost/expenses are not recorded, against that record's net sales
+  const rep = aggregate([{ totalSales: 50000, salesBasis: "gross", discount: 0, reportedProfit: 7500 }]);
+  assert.deepEqual([rep.profitMargin.value, rep.netProfit.value], [15, 7500]);
+  // no net sales -> no margin (never divides by zero or invents data)
+  const none = aggregate([C]);
+  assert.deepEqual([none.profitMargin.value, none.profitMargin.netSales, none.profitMargin.status], [null, null, "unavailable"]);
+});

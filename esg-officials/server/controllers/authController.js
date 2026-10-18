@@ -2,6 +2,7 @@ const User = require("../models/User");
 const OTP = require("../models/OTP");
 const bcrypt = require("bcryptjs");
 const { buildLoginQuery } = require("../utils/loginQuery");
+const { otpConfig } = require("../utils/otpConfig");
 const { sendOTPEmail } = require("../utils/email");
 const jwt = require("jsonwebtoken");
 
@@ -340,6 +341,8 @@ exports.verifyOtp = async (req, res) => {
     const otpRecord = await OTP.findOne({
       email: normalizedEmail,
       action: "account_verification",
+      // expiry enforced here too, not only by MongoDB's TTL cleanup
+      createdAt: { $gt: new Date(Date.now() - otpConfig().ttlMs) },
     });
 
     // New OTPs are bcrypt-hashed. The plain comparison is temporary support
@@ -428,5 +431,103 @@ exports.verifyOtp = async (req, res) => {
       message:
         "Error verifying OTP",
     });
+  }
+};
+// ==========================================
+// EMAIL OTP SIGN-IN (passwordless)
+// ==========================================
+const { createLoginOtp } = require("../services/auth/loginOtp");
+
+const loginOtp = createLoginOtp({
+  User,
+  OTP,
+  hash: (code) => bcrypt.hash(code, 10),
+  compare: (code, hashed) => bcrypt.compare(code, hashed),
+  sendEmail: sendOTPEmail,
+});
+
+// Same response shape as the password login, so the frontend stores it the same way
+const loginPayload = (user, message) => ({
+  message,
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  clientId: user.clientId || null,
+  companyName: user.companyName || null,
+  assignedManager: user.assignedManager || null,
+  token: generateToken(user._id, user.role),
+});
+
+const GENERIC_SENT = "If an account exists for this email, a 6-digit sign-in code has been sent. It expires in 5 minutes.";
+
+exports.requestLoginOtp = async (req, res) => {
+  try {
+    const result = await loginOtp.request({ email: req.body.email, portal: req.body.portal });
+    if (result.invalidInput) return res.status(400).json({ message: "Enter a valid email address." });
+    if (!result.sent) console.info(`[login-otp] request not sent (${result.reason})`);
+    // identical answer for known and unknown emails
+    return res.json({ message: GENERIC_SENT });
+  } catch (error) {
+    console.error("Login OTP request error:", error.message);
+    return res.status(500).json({ message: "Could not process the request. Please try again." });
+  }
+};
+
+exports.verifyLoginOtp = async (req, res) => {
+  try {
+    const result = await loginOtp.verify({ email: req.body.email, otp: req.body.otp, portal: req.body.portal });
+    if (!result.ok) {
+      if (result.error === "too_many") {
+        return res.status(429).json({ message: "Too many incorrect attempts. Request a new code." });
+      }
+      return res.status(400).json({ message: "Invalid or expired code." });
+    }
+    return res.json(loginPayload(result.user, "Login successful"));
+  } catch (error) {
+    console.error("Login OTP verify error:", error.message);
+    return res.status(500).json({ message: "Could not verify the code. Please try again." });
+  }
+};
+
+// ==========================================
+// FORGOT PASSWORD (email code -> new password)
+// ==========================================
+const { createPasswordReset } = require("../services/auth/passwordReset");
+
+const passwordReset = createPasswordReset({
+  User,
+  OTP,
+  hash: (code) => bcrypt.hash(code, 10),
+  compare: (code, hashed) => bcrypt.compare(code, hashed),
+  hashPassword: (pw) => bcrypt.hash(pw, 10), // same as registration / admin-created accounts
+  sendEmail: sendOTPEmail,
+});
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const result = await passwordReset.request({ email: req.body.email });
+    if (result.invalidInput) return res.status(400).json({ message: "Enter a valid email address." });
+    if (!result.sent) console.info(`[password-reset] request not sent (${result.reason})`);
+    const { expiryMinutes } = otpConfig();
+    return res.json({ message: `If an account exists for this email, a password reset code has been sent. It expires in ${expiryMinutes} minutes.` });
+  } catch (error) {
+    console.error("Forgot password error:", error.message);
+    return res.status(500).json({ message: "Could not process the request. Please try again." });
+  }
+};
+
+exports.resetPassword = async (req, res) => {
+  try {
+    const result = await passwordReset.reset({ email: req.body.email, otp: req.body.otp, newPassword: req.body.newPassword });
+    if (!result.ok) {
+      if (result.error === "weak_password") return res.status(400).json({ message: result.message });
+      if (result.error === "too_many") return res.status(429).json({ message: "Too many incorrect attempts. Request a new code." });
+      return res.status(400).json({ message: "Invalid or expired code." });
+    }
+    return res.json({ message: "Your password has been changed. Please sign in with the new password." });
+  } catch (error) {
+    console.error("Reset password error:", error.message);
+    return res.status(500).json({ message: "Could not reset the password. Please try again." });
   }
 };

@@ -1,5 +1,7 @@
 import React, { useState, useContext } from "react";
 import { AuthContext } from "../context/AuthContext";
+import EmailOtpLogin from "../components/auth/EmailOtpLogin";
+import { dashboardPath } from "../utils/dashboardPath";
 import { useNavigate, Link } from "react-router-dom";
 import { FaChartLine, FaLock, FaArrowLeft, FaEye, FaEyeSlash, FaBuilding } from "react-icons/fa";
 
@@ -16,6 +18,7 @@ const ClientLogin = () => {
 
     const { login, verifyOTP } = useContext(AuthContext);
     const navigate = useNavigate();
+    const [useEmailCode, setUseEmailCode] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -104,6 +107,10 @@ const ClientLogin = () => {
                 )}
 
                 {/* Form */}
+                {useEmailCode ? (
+                    <EmailOtpLogin portal={"client"} theme="emerald" onSuccess={(data) => navigate(dashboardPath(data.role))} onUsePassword={() => setUseEmailCode(false)} />
+                ) : (
+                <>
                 <form onSubmit={handleSubmit} className="space-y-5">
                     {!showOTP ? (
                         <>
@@ -192,6 +199,16 @@ const ClientLogin = () => {
                         )}
                     </button>
                 </form>
+                <p className="text-center text-xs mt-4">
+                    <button type="button" className="text-stone-400 hover:text-stone-200 underline cursor-pointer" onClick={() => setUseEmailCode(true)}>
+                        Sign in with an email code instead
+                    </button>
+                </p>
+                <p className="text-center text-xs mt-2">
+                    <Link to="/forgot-password" className="text-stone-400 hover:text-stone-200 underline">Forgot password?</Link>
+                </p>
+                </>
+                )}
 
                 {/* Footer Links */}
                 <div className="mt-8 pt-6 border-t border-stone-800 text-center">

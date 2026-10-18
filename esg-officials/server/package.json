@@ -20,7 +20,9 @@
     "migrate:planner": "node scripts/migratePlanner.js",
     "purge:client-sales": "node scripts/purgeClientSales.js",
     "portal:provision": "node scripts/provisionClientPortal.js",
-    "link:clients": "node scripts/linkBusinessClients.js"
+    "link:clients": "node scripts/linkBusinessClients.js",
+    "email:test-otp": "node scripts/testOtpEmail.js",
+    "migrate:otp": "node scripts/migrateOtpIndexes.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
