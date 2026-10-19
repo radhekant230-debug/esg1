@@ -57,6 +57,10 @@ const salesImportJobSchema = new Schema(
     duplicateMode: { type: String, enum: ["skip", "update"], default: "skip" },
     // Upload-form context
     targetBusiness: { type: Schema.Types.ObjectId, ref: "SalesBusiness", default: null },
+    // Client portal chosen in the upload form; commit refuses rows of businesses not linked to it
+    targetClient: { type: Schema.Types.ObjectId, ref: "User", default: null },
+    // client sales ledger to create at commit (client had no sales business yet)
+    pendingLedger: { type: Schema.Types.Mixed, default: null },
     defaultPeriod: {
       month: { type: Number, default: null },
       year: { type: Number, default: null },

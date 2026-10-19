@@ -111,6 +111,8 @@ router.post("/google-business", adminOrManager, portalController.addGoogleBusine
 
 // 7. Leads & Enquiries
 router.get("/leads", portalController.getLeads);
+router.get("/leads/customers", portalController.getLeadCustomers);
+router.get("/leads/leaderboard", portalController.getLeadLeaderboard);
 router.post("/leads", portalController.addLead); // clients add to their own account; managers only to assigned clients
 router.put("/leads/:id", portalController.updateLead);
 // Customer list / enquiry sheet import (CSV, XLSX, XLS): ?mode=preview then ?mode=commit

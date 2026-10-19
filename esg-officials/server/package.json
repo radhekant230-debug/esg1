@@ -22,7 +22,9 @@
     "portal:provision": "node scripts/provisionClientPortal.js",
     "link:clients": "node scripts/linkBusinessClients.js",
     "email:test-otp": "node scripts/testOtpEmail.js",
-    "migrate:otp": "node scripts/migrateOtpIndexes.js"
+    "migrate:otp": "node scripts/migrateOtpIndexes.js",
+    "leads:backfill-stats": "node scripts/backfillCustomerStats.js",
+    "leads:import-customers": "node scripts/importCustomerList.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

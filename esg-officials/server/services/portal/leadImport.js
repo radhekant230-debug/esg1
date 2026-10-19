@@ -158,6 +158,11 @@ const inr = (n) => `₹${Number(n).toLocaleString("en-IN", { maximumFractionDigi
  * Turns sheet rows into lead documents. Pure (no database).
  * Returns { leads: [{ rowNumber, key, doc, note }], skipped: [{ rowNumber, reason }], columns }
  */
+// Headers that hold what the customer actually spent / when they actually visited
+// (vs. "Value"/"Estimated value", which are enquiry estimates)
+const ACTUAL_SPEND_HEADERS = ["totalspent", "amount", "totalamount", "charge", "totalcharge", "totalspend", "totalspends", "spend", "spends", "totalsales", "sales", "totalrevenue", "revenue", "lifetimevalue", "ltv"];
+const VISIT_DATE_HEADERS = ["lastvisitedat", "lastvisit", "lastvisited", "lastvisitdate", "lastvisiteddate", "lastorderdate", "lastorder", "lasttransactiondate", "lasttxndate", "visitdate", "orderdate"];
+
 function mapRows({ headers, rows }, { sources, defaultSource = "Walk-in", now = new Date() }) {
   const col = columnMap(headers);
   if (col.phone === undefined && col.email === undefined && col.name === undefined && col.firstname === undefined) {
@@ -166,6 +171,9 @@ function mapRows({ headers, rows }, { sources, defaultSource = "Walk-in", now = 
     throw e;
   }
   const raw = (cells, f) => (col[f] === undefined ? "" : cells[col[f]]);
+  const headerOf = (f) => (col[f] === undefined ? "" : norm(headers[col[f]]));
+  const actualSpend = ACTUAL_SPEND_HEADERS.includes(headerOf("value"));
+  const visitDate = VISIT_DATE_HEADERS.includes(headerOf("date"));
   const get = (cells, f) => {
     const v = raw(cells, f);
     return v instanceof Date ? v.toISOString() : String(v ?? "").trim();
@@ -200,7 +208,10 @@ function mapRows({ headers, rows }, { sources, defaultSource = "Walk-in", now = 
       ((visits !== null && visits > 0) || (value !== null && value > 0) ? "Converted" : "New");
     const srcRaw = get(cells, "source");
     const source = sources.find((s) => s.toLowerCase() === srcRaw.toLowerCase()) || defaultSource;
-    const date = parseDate(raw(cells, "date")) || now;
+    // POS exports write 1970-01-01 (Unix epoch) for customers who never visited: not a date
+    const fileDate = parseDate(raw(cells, "date"));
+    const realDate = fileDate && fileDate.getTime() >= Date.UTC(1971, 0, 1) ? fileDate : null;
+    const date = realDate || now;
     const campaign = (get(cells, "campaign") || (segment ? `RFM: ${segment}` : "")).slice(0, 120);
 
     const facts = [];
@@ -229,6 +240,7 @@ function mapRows({ headers, rows }, { sources, defaultSource = "Walk-in", now = 
       key,
       phone,
       email,
+      dated: Boolean(realDate), // false when the date fell back to "now"
       doc: {
         name,
         phone,
@@ -240,6 +252,17 @@ function mapRows({ headers, rows }, { sources, defaultSource = "Walk-in", now = 
         status,
       },
       note: facts.length ? `Imported from customer list: ${facts.join(" · ")}` : "",
+      // structured actual figures (only from columns that record them)
+      stats:
+        visits !== null || (actualSpend && value !== null) || (visitDate && realDate)
+          ? {
+              visits: visits !== null && visits >= 0 ? Math.round(visits) : null,
+              totalSpent: actualSpend && value !== null ? Math.round(value * 100) / 100 : null,
+              avgSpend: avg !== null && avg >= 0 ? Math.round(avg * 100) / 100 : null,
+              lastVisitAt: visitDate ? realDate : null,
+              source: "customer_list",
+            }
+          : null,
     });
   });
 

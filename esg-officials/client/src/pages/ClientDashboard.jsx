@@ -42,7 +42,7 @@ import ClientMonthlySales from "../components/portal/ClientMonthlySales";
 import AdvertisingTab from "../components/portal/AdvertisingTab";
 import SocialMediaTab from "../components/portal/SocialMediaTab";
 import LocalMarketingTab from "../components/portal/LocalMarketingTab";
-import LeadsPipelineTab from "../components/portal/LeadsPipelineTab";
+import LeadsWorkspace from "../components/portal/LeadsWorkspace";
 import ContentApprovalsTab from "../components/portal/ContentApprovalsTab";
 import WorkInProgressTab from "../components/portal/WorkInProgressTab";
 import ReportsInsightsTab from "../components/portal/ReportsInsightsTab";
@@ -774,7 +774,12 @@ export default function ClientDashboard() {
                 6. Leads & Enquiries
               </h2>
             </div>
-            <LeadsPipelineTab leadsData={leadsData} onRefresh={fetchAllPortalData} clientId={selectedClientId || clientUser?._id || ""} />
+            <LeadsWorkspace
+              leadsData={leadsData}
+              onRefresh={fetchAllPortalData}
+              // client users: always their own account (the server enforces this too); team: the selected client
+              clientId={isAdmin || isManager ? selectedClientId || clientUser?._id || "" : String(user?._id || clientUser?._id || "")}
+            />
           </div>
         )}
 

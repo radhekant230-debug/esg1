@@ -15,6 +15,13 @@ const ClientVaultDocument = require("../models/portal/ClientVaultDocument");
 const { buildClientSalesFeed, getClientSyncStamp } = require("../services/portal/clientSalesFeed");
 const ist = require("../utils/istDate");
 const leadImport = require("../services/portal/leadImport");
+const customerInsights = require("../services/portal/customerInsights");
+const customerListImport = require("../services/portal/customerListImport");
+const salesModels = () => ({
+  Business: require("../models/biz/Business"),
+  BizSale: require("../models/biz/BizSale"),
+  BizCustomer: require("../models/biz/BizCustomer"),
+});
 
 // Helper to determine target client ID with strict authorization
 const getTargetClientId = (req) => {
@@ -695,9 +702,22 @@ exports.getLeads = async (req, res) => {
       ClientLead.countDocuments(filter),
       ClientLead.find(filter).sort({ enquiryDate: -1, _id: -1 }).skip((page - 1) * limit).limit(limit),
     ]);
+    // customer columns (visits, enquiries, actual spending, last visit, type) for this page
+    let pageLeads = leads.map((l) => l.toObject());
+    try {
+      const keys = [...new Set(pageLeads.map((l) => customerInsights.customerKey({ phone: l.phone, email: l.email, id: String(l._id) })))];
+      if (keys.length) {
+        const base = await customerInsights.customerBase({ ClientLead, salesModels: salesModels(), clientObjectId, range: null });
+        const want = new Set(keys);
+        const byKey = new Map(base.all.filter((c) => want.has(c.key)).map((c) => [c.key, c]));
+        pageLeads = pageLeads.map((l) => ({ ...l, customer: byKey.get(customerInsights.customerKey({ phone: l.phone, email: l.email, id: String(l._id) })) || null }));
+      }
+    } catch (e) {
+      console.error("Lead customer stats error:", e.message); // the list still loads without them
+    }
 
     return res.json({
-      leads,
+      leads: pageLeads,
       counts,
       values,
       page: { page, limit, matching, pages: Math.max(1, Math.ceil(matching / limit)) },
@@ -710,117 +730,126 @@ exports.getLeads = async (req, res) => {
 };
 
 /**
+ * GET /portal/leads/leaderboard — Top Customers Leaderboard.
+ * rankBy: spending | visits | enquiries | avg | recent | converted; dir: desc | asc;
+ * top: 10 | 25 | 50 | (empty = all); page, limit; filters: customer (name/phone/email),
+ * type, segment, status, source, range/from/to. One row per customer (phone, else
+ * email), only the selected client's records (resolvePortalClient).
+ */
+exports.getLeadLeaderboard = async (req, res) => {
+  try {
+    const clientId = getTargetClientId(req);
+    if (!clientId) return res.status(404).json({ message: "Client not found." });
+    const clientObjectId = new mongoose.Types.ObjectId(String(clientId));
+    const range = customerInsights.dateRange(req.query) || null;
+    const q = { customer: req.query.customer, type: req.query.type, segment: req.query.segment };
+    if (LEAD_STATUSES.includes(req.query.status)) q.status = req.query.status;
+    if (LEAD_SOURCES.includes(req.query.source)) q.source = req.query.source;
+    const base = await customerInsights.customerBase({ ClientLead, salesModels: salesModels(), clientObjectId, range });
+    const { all } = base;
+    const tx = { hasSales: base.posSales, unidentified: base.unidentified };
+    const { list } = customerInsights.filterCustomers(all, q);
+    const top = [10, 25, 50].includes(Number(req.query.top)) ? Number(req.query.top) : null;
+    const ranked = customerInsights.rankCustomers(list, { rankBy: req.query.rankBy, dir: req.query.dir === "asc" ? "asc" : "desc", top });
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 200);
+    const pages = Math.max(1, Math.ceil(ranked.list.length / limit));
+    const page = Math.min(Math.max(parseInt(req.query.page, 10) || 1, 1), pages);
+    const pick = ({ rank, key, leadId, name, phone, email, spent, visits, enquiries, avgSpend, lastVisit, type, segment, converted, convertedValue, dataSource, scope }) =>
+      ({ rank, key, leadId, name, phone, email, spent, visits, enquiries, avgSpend, lastVisit, type, segment, converted, convertedValue, dataSource, scope });
+    return res.json({
+      rankBy: ranked.rankBy,
+      label: ranked.label,
+      rows: ranked.list.slice((page - 1) * limit, page * limit).map(pick),
+      page: { page, limit, matching: ranked.list.length, pages },
+      customers: list.length,
+      ranked: ranked.ranked,
+      excluded: ranked.excluded,
+      excludedReason: ranked.excludedReason,
+      segments: [...new Set(all.map((c) => c.segment).filter(Boolean))].sort(),
+      range: range ? { from: range.from, to: range.to } : null,
+    });
+  } catch (error) {
+    console.error("Lead Leaderboard Error:", error.message);
+    return res.status(500).json({ message: "Server error building the customer leaderboard." });
+  }
+};
+
+/**
+ * GET /portal/leads/customers — Customer Insights: one row per customer
+ * (deduplicated by phone, else email) with visits, enquiries, actual spending,
+ * last visit and New/Returning, plus summary cards. Filters: range/from/to,
+ * customer (name/phone/email), visits (most|one|2-5|6-10|10+), spendMin/spendMax,
+ * status, type (new|returning), source, insight, inactiveDays, sort, page, limit.
+ * Access: resolvePortalClient (managers: assigned clients only).
+ */
+exports.getLeadCustomers = async (req, res) => {
+  try {
+    const clientId = getTargetClientId(req);
+    if (!clientId) return res.status(404).json({ message: "Client not found." });
+    const clientObjectId = new mongoose.Types.ObjectId(String(clientId));
+    const range = customerInsights.dateRange(req.query) || null;
+    const q = { ...req.query };
+    if (q.status && !LEAD_STATUSES.includes(q.status)) delete q.status;
+    if (q.source && !LEAD_SOURCES.includes(q.source)) delete q.source;
+    if (!q.customer && q.q) q.customer = q.q; // the table's search box
+
+    const base = await customerInsights.customerBase({ ClientLead, salesModels: salesModels(), clientObjectId, range });
+    const { all } = base;
+    const tx = { hasSales: base.posSales, unidentified: base.unidentified };
+    const { list, sortKey, inactiveDays } = customerInsights.filterCustomers(all, q);
+    const summary = customerInsights.summarize(list);
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+    const pages = Math.max(1, Math.ceil(list.length / limit));
+    const page = Math.min(Math.max(parseInt(req.query.page, 10) || 1, 1), pages);
+    const slice = list.slice((page - 1) * limit, page * limit);
+    const docs = await ClientLead.find({ client: clientObjectId, _id: { $in: slice.map((c) => c.leadId).filter(Boolean) } });
+    const byId = new Map(docs.map((d) => [String(d._id), d.toObject()]));
+    const rows = slice.map((c) => {
+      const lead = c.leadId && byId.get(c.leadId);
+      // customers known only from POS sales have no enquiry to edit
+      return lead ? { ...lead, customer: c } : { _id: `customer:${c.key}`, name: c.name, phone: c.phone, email: c.email, source: null, status: null, notes: [], noEnquiry: true, customer: c };
+    });
+    return res.json({
+      mode: "customers",
+      leads: rows,
+      summary,
+      page: { page, limit, matching: list.length, pages },
+      sort: sortKey,
+      inactiveDays,
+      data: { posSales: tx.hasSales, unidentifiedBills: tx.unidentified },
+      segments: [...new Set(all.map((c) => c.segment).filter(Boolean))].sort(),
+      range: range ? { from: range.from, to: range.to } : null,
+    });
+  } catch (error) {
+    console.error("Lead Customers Error:", error.message);
+    return res.status(500).json({ message: "Server error building customer insights." });
+  }
+};
+
+/**
  * POST /portal/leads/import?mode=preview|commit  (multipart field "file")
  * Imports a customer list / enquiry sheet into Leads & Enquiries.
  * Existing customers (same phone, else email) are updated, never duplicated.
  */
 exports.importLeads = async (req, res) => {
   try {
-    const clientId = getTargetClientId(req);
+    const clientId = getTargetClientId(req); // validated by resolvePortalClient (managers: assigned clients only)
     if (!clientId) return res.status(400).json({ message: "Target client ID required." });
     if (!req.file || !req.file.buffer) return res.status(400).json({ message: "Choose a CSV or Excel file to upload." });
-    const mode = req.query.mode === "commit" ? "commit" : "preview";
     const reqSource = String(req.body?.source || "").trim();
-    const defaultSource = LEAD_SOURCES.find((s) => s.toLowerCase() === reqSource.toLowerCase()) || "Walk-in";
-
-    const sheet = leadImport.readSheetRows(req.file.buffer, req.file.originalname);
-    if (!sheet.rows.length) return res.status(400).json({ message: "The file has no data rows." });
-    if (sheet.rows.length > 50000) return res.status(400).json({ message: "Files are limited to 50,000 rows. Please split the file." });
-    const { leads, skipped, columns } = leadImport.mapRows(sheet, { sources: LEAD_SOURCES, defaultSource });
-
-    // match against the client's existing enquiries
-    const phones = leads.map((l) => l.phone).filter(Boolean);
-    const emails = leads.map((l) => l.email).filter(Boolean);
-    const existing = await ClientLead.find({ client: clientId, $or: [{ phone: { $in: phones } }, { email: { $in: emails } }] }).select("_id phone email enquiryDate");
-    const byPhone = new Map();
-    const byEmail = new Map();
-    existing.forEach((e) => {
-      if (e.phone) byPhone.set(leadImport.normPhone(e.phone) || e.phone, e);
-      if (e.email) byEmail.set(String(e.email).toLowerCase(), e);
+    const out = await customerListImport.importCustomerList({
+      ClientLead,
+      clientId,
+      buffer: req.file.buffer,
+      filename: req.file.originalname,
+      sources: LEAD_SOURCES,
+      defaultSource: LEAD_SOURCES.find((s) => s.toLowerCase() === reqSource.toLowerCase()) || "Walk-in",
+      mode: req.query.mode === "commit" ? "commit" : "preview",
+      author: req.user.name || "Import",
     });
-    const creates = [];
-    const updates = [];
-    leads.forEach((l) => {
-      const match = (l.phone && byPhone.get(l.phone)) || (l.email && byEmail.get(l.email));
-      (match ? updates : creates).push({ ...l, match });
-    });
-    const totalValue = Math.round(leads.reduce((sum, l) => sum + Math.round(l.doc.estimatedValue * 100), 0)) / 100;
-    const summary = {
-      file: req.file.originalname,
-      rows: sheet.rows.length,
-      columns,
-      toCreate: creates.length,
-      toUpdate: updates.length,
-      skipped: skipped.length,
-      skippedRows: skipped.slice(0, 50),
-      totalValue,
-      byStatus: leads.reduce((m, l) => ((m[l.doc.status] = (m[l.doc.status] || 0) + 1), m), {}),
-      sample: leads.slice(0, 8).map((l) => ({ ...l.doc, note: l.note })),
-      defaultSource,
-    };
-    if (mode === "preview") return res.json({ mode, summary });
-
-    // ---- commit ----
-    const author = req.user.name || "Import";
-    const createdAt = new Date();
-    let created = 0;
-    for (let i = 0; i < creates.length; i += 1000) {
-      const docs = creates.slice(i, i + 1000).map((l) => {
-        const status = l.doc.status;
-        return {
-          ...l.doc,
-          client: clientId,
-          reportingMonth: monthKey(l.doc.enquiryDate),
-          isQualified: ["Qualified", "Converted"].includes(status),
-          isConverted: status === "Converted",
-          notes: l.note ? [{ text: l.note, author, createdAt }] : [],
-        };
-      });
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const r = await ClientLead.insertMany(docs, { ordered: false });
-        created += r.length;
-      } catch (insertErr) {
-        if (insertErr.insertedCount) {
-          created += insertErr.insertedCount;
-        } else if (insertErr.result?.nInserted) {
-          created += insertErr.result.nInserted;
-        } else if (Array.isArray(insertErr.insertedDocs)) {
-          created += insertErr.insertedDocs.length;
-        } else {
-          throw insertErr;
-        }
-      }
-    }
-    let updated = 0;
-    for (let i = 0; i < updates.length; i += 1000) {
-      const ops = updates.slice(i, i + 1000).map((l) => {
-        // keep the stage and name the team may have edited; refresh value, latest visit and contact details
-        const set = { estimatedValue: l.doc.estimatedValue };
-        if (l.doc.campaign) set.campaign = l.doc.campaign;
-        if (!l.match.enquiryDate || l.doc.enquiryDate > l.match.enquiryDate) {
-          set.enquiryDate = l.doc.enquiryDate;
-          set.reportingMonth = monthKey(l.doc.enquiryDate);
-        }
-        if (l.phone && !l.match.phone) set.phone = l.phone;
-        if (l.email && !l.match.email) set.email = l.email;
-        return { updateOne: { filter: { _id: l.match._id, client: clientId }, update: { $set: set } } };
-      });
-      if (ops.length) {
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const r = await ClientLead.bulkWrite(ops, { ordered: false });
-          updated += r.modifiedCount ?? r.nModified ?? 0;
-        } catch (writeErr) {
-          if (writeErr.result?.nModified) {
-            updated += writeErr.result.nModified;
-          } else {
-            throw writeErr;
-          }
-        }
-      }
-    }
-    return res.json({ mode, summary, result: { created, updated, unchanged: updates.length - updated, skipped: skipped.length } });
+    customerInsights.invalidateCustomerBase(clientId); // fresh customer figures after an import
+    return res.json(out);
   } catch (error) {
     console.error("Import Leads Error:", error.message);
     if (error.status === 400) return res.status(400).json({ message: error.message });
@@ -845,6 +874,7 @@ exports.addLead = async (req, res) => {
       lead.notes.push({ text: String(firstNote).trim().slice(0, 2000), author: req.user.name, createdAt: new Date() });
     }
     await lead.save();
+    customerInsights.invalidateCustomerBase(lead.client);
 
     return res.status(201).json({ message: "Lead recorded.", lead });
   } catch (error) {
@@ -886,6 +916,7 @@ exports.updateLead = async (req, res) => {
     }
 
     await lead.save();
+    customerInsights.invalidateCustomerBase(lead.client);
     return res.json({ message: "Lead updated.", lead });
   } catch (error) {
     console.error("Update Lead Error:", error);

@@ -17,6 +17,7 @@ const salesEntrySchema = new Schema(
   {
     business: { type: Schema.Types.ObjectId, ref: "SalesBusiness", required: true },
     businessName: { type: String, required: true, trim: true },
+    client: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true }, // client portal account (User _id)
     city: { type: String, default: "", trim: true },
     state: { type: String, default: "", trim: true },
     kind: { type: String, enum: ["txn", "day", "period"], required: true },

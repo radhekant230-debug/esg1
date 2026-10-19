@@ -172,6 +172,14 @@ export default function LeadImportModal({ clientId = "", sources = [], onClose, 
                     ["New customers", s.toCreate.toLocaleString("en-IN")],
                     ["Already in list (update)", s.toUpdate.toLocaleString("en-IN")],
                     ["Skipped", s.skipped.toLocaleString("en-IN")],
+                    ...(s.customerData && (s.customerData.withVisits || s.customerData.withSpend)
+                      ? [
+                          ["Customers with visits", s.customerData.withVisits.toLocaleString("en-IN")],
+                          ["Total visits in file", s.customerData.totalVisits.toLocaleString("en-IN")],
+                          ["Customers with spend", s.customerData.withSpend.toLocaleString("en-IN")],
+                          ["Total spent in file", `₹${s.customerData.totalSpent.toLocaleString("en-IN")}`],
+                        ]
+                      : []),
                   ].map(([k, v]) => (
                     <div key={k} className="rounded-lg border border-[#E7DFD5] p-2.5">
                       <p className="text-[10px] uppercase tracking-wider text-stone-500 font-semibold">{k}</p>

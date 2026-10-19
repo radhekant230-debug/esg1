@@ -46,6 +46,7 @@ router.put("/records/:id", salesController.updateSalesRecord);
 router.delete("/records/:id", admin, salesController.deleteSalesRecord);
 
 // 5. Excel/CSV Import Workflow (preview -> confirm, transactional)
+router.get("/import-targets", salesImport.getImportTargets);
 router.post("/upload/preview", upload.single("file"), salesImport.previewSalesExcel);
 router.post("/upload/commit", salesImport.commitSalesExcel);
 router.get("/upload/:id/invalid-rows", salesImport.downloadInvalidRows);

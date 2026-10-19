@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import api from "../../utils/axios";
-import LeadsPipelineTab from "../portal/LeadsPipelineTab";
+import LeadsWorkspace from "../portal/LeadsWorkspace";
 
 /**
  * Manager Portal → Leads & Enquiries. Lists the clients assigned to this
@@ -31,7 +31,7 @@ export default function ManagerEnquiries() {
     if (!clientId) return;
     try {
       const { data } = await api.get(`/portal/leads?clientId=${clientId}`);
-      setLeadsData(data);
+      setLeadsData({ ...data, _for: clientId }); // remember which client this data belongs to
       setError("");
     } catch (err) {
       setLeadsData(null);
@@ -75,10 +75,10 @@ export default function ManagerEnquiries() {
         <p className="text-sm text-gray-500">Loading clients…</p>
       ) : clients.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-600">No clients are assigned to you yet.</div>
-      ) : !leadsData ? (
+      ) : !leadsData || leadsData._for !== clientId ? (
         !error && <p className="text-sm text-gray-500">Loading enquiries…</p>
       ) : (
-        <LeadsPipelineTab leadsData={leadsData} onRefresh={loadLeads} clientId={clientId} />
+        <LeadsWorkspace key={clientId} clientId={clientId} leadsData={leadsData} onRefresh={loadLeads} />
       )}
     </div>
   );

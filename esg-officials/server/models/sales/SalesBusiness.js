@@ -57,6 +57,12 @@ const salesBusinessSchema = new Schema(
       default: null,
       index: true,
     },
+    // true = the client's own sales ledger, created automatically by a sales import
+    // for a client that had no business (no manual "business" setup needed)
+    isClientLedger: {
+      type: Boolean,
+      default: false,
+    },
     // Optional link to the client portal account that owns this business
     clientAccount: {
       type: Schema.Types.ObjectId,

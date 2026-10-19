@@ -9,6 +9,13 @@ const salesRecordSchema = new Schema(
       required: true,
       index: true,
     },
+    // Client portal account (User _id) the record belongs to, set by imports
+    client: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
     businessName: {
       type: String,
       required: true,

@@ -34,7 +34,18 @@ const EXPECTED = [
   ["Remarks", "No", "Free text"],
 ];
 
-const errText = (err, fallback) => err?.response?.data?.message || fallback;
+// The server's own message when it sent one; otherwise say what failed (network, size, timeout)
+const errText = (err, fallback) => {
+  const r = err?.response;
+  if (r?.data?.message) return r.data.message;
+  if (r?.status === 413) return "The file is larger than the 15 MB upload limit.";
+  if (r?.status === 401) return "Your session has expired. Please sign in again.";
+  if (r?.status === 403) return "You are not authorized for this action.";
+  if (r) return `${fallback} (server responded ${r.status}${r.statusText ? ` ${r.statusText}` : ""}).`;
+  if (err?.code === "ECONNABORTED") return `${fallback} The request timed out.`;
+  if (err?.message === "Network Error") return `${fallback} The server could not be reached (network error or the API is offline).`;
+  return err?.message ? `${fallback} ${err.message}` : fallback;
+};
 
 /**
  * Sales Excel/CSV import: upload -> server-side validation preview -> confirm.
@@ -152,6 +163,10 @@ export default function ExcelUploadModal({ isOpen, onClose, onSuccess, userScope
   const [businesses, setBusinesses] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState("");
   const [targetBusinessId, setTargetBusinessId] = useState(defaultBusinessId);
+  // Client portal chosen as the import target (its User _id); businesses come from /sales/import-targets
+  const [targetClientId, setTargetClientId] = useState("");
+  const [targets, setTargets] = useState(null);
+  const [targetsError, setTargetsError] = useState("");
   const [reportingPeriod, setReportingPeriod] = useState("auto");
   const [autoDetectDates, setAutoDetectDates] = useState(true);
   const [manualDateOverride, setManualDateOverride] = useState(false);
@@ -160,13 +175,34 @@ export default function ExcelUploadModal({ isOpen, onClose, onSuccess, userScope
   const [reportingMonth, setReportingMonth] = useState("");
   const [reportingYear, setReportingYear] = useState("");
 
+  // Re-read clients and businesses from the database every time the modal opens
+  // (newly created clients appear without a page reload; no cached list)
+  const loadTargets = () =>
+    Promise.all([
+      api.get("/sales/businesses", { params: { _: Date.now() } }).then((r) => setBusinesses(Array.isArray(r.data) ? r.data : [])).catch(() => setBusinesses([])),
+      api
+        .get("/sales/import-targets", { params: { _: Date.now() } })
+        .then((r) => {
+          setTargets(r.data);
+          setTargetsError("");
+        })
+        .catch((err) => {
+          setTargets(null);
+          setTargetsError(errText(err, "Could not load clients."));
+        }),
+    ]);
   useEffect(() => {
     if (!isOpen) return;
-    api
-      .get("/sales/businesses")
-      .then((r) => setBusinesses(Array.isArray(r.data) ? r.data : []))
-      .catch(() => setBusinesses([]));
+    loadTargets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
+
+  // A preselected business that belongs to a client portal is shown under that client
+  useEffect(() => {
+    if (!targets || targetClientId || !targetBusinessId) return;
+    const owner = targets.clients.find((c) => c.businesses.some((b) => b._id === targetBusinessId));
+    if (owner) setTargetClientId(owner._id);
+  }, [targets, targetBusinessId, targetClientId]);
 
   if (!isOpen) return null;
 
@@ -213,6 +249,8 @@ export default function ExcelUploadModal({ isOpen, onClose, onSuccess, userScope
       
       const effectiveBizId = overrides.targetBusinessId !== undefined ? overrides.targetBusinessId : targetBusinessId;
       if (effectiveBizId) formData.append("targetBusinessId", effectiveBizId);
+      const effectiveClientId = overrides.targetClientId !== undefined ? overrides.targetClientId : targetClientId;
+      if (effectiveClientId) formData.append("targetClientId", effectiveClientId);
 
       const effectivePeriod = overrides.reportingPeriod !== undefined ? overrides.reportingPeriod : reportingPeriod;
       if (effectivePeriod && effectivePeriod !== "auto") formData.append("reportingPeriod", effectivePeriod);
@@ -262,6 +300,14 @@ export default function ExcelUploadModal({ isOpen, onClose, onSuccess, userScope
       setErrorMsg("Invalid file format. Please upload an Excel (.xlsx, .xls) or CSV (.csv) file.");
       return;
     }
+    if (selectedFile.size === 0) {
+      setErrorMsg(`"${selectedFile.name}" is empty. Choose a file that contains a header row and sales rows.`);
+      return;
+    }
+    if (selectedFile.size > 15 * 1024 * 1024) {
+      setErrorMsg(`"${selectedFile.name}" is ${(selectedFile.size / 1024 / 1024).toFixed(1)} MB. The upload limit is 15 MB — split the file and import it in parts.`);
+      return;
+    }
     if ((reportingMonth && !reportingYear) || (!reportingMonth && reportingYear)) {
       setErrorMsg("Choose both the reporting month and year, or leave both empty.");
       return;
@@ -269,6 +315,26 @@ export default function ExcelUploadModal({ isOpen, onClose, onSuccess, userScope
     setFile(selectedFile);
     setMapping({});
     runPreview(selectedFile);
+  };
+
+  const selectedClientTarget = targets?.clients?.find((c) => c._id === targetClientId) || null;
+  // Warnings for the chosen target (no business setup is ever required)
+  const renderClientTargetNotes = () => {
+    const c = selectedClientTarget;
+    const unlinkedPick = !targetClientId && targetBusinessId && targets?.unlinkedBusinesses?.find((b) => b._id === targetBusinessId);
+    const chosen = c && c.businesses.find((b) => b._id === targetBusinessId);
+    return (
+      <>
+        {unlinkedPick && (
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            {unlinkedPick.name} has no client portal: imported sales are stored for managers only and will not appear in any client dashboard.
+          </p>
+        )}
+        {chosen && !chosen.nameMatchesClient && (
+          <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{c.warnings.find((w) => w.includes(chosen.name)) || ""}</p>
+        )}
+      </>
+    );
   };
 
   // Target selection shown before upload and while reviewing (re-validates the same file)
@@ -280,24 +346,60 @@ export default function ExcelUploadModal({ isOpen, onClose, onSuccess, userScope
           Client / Business
           <select
             className="mt-1 w-full px-2.5 py-2 rounded-lg border border-gray-300 text-xs font-normal normal-case tracking-normal text-gray-900 bg-white"
-            value={targetBusinessId}
+            value={targetClientId ? `c|${targetClientId}|${targetBusinessId}` : targetBusinessId ? `b||${targetBusinessId}` : ""}
             onChange={(e) => {
-              const newBizId = e.target.value;
-              setTargetBusinessId(newBizId);
-              const b = businesses.find((x) => x._id === newBizId);
+              const [, clientId = "", bizId = ""] = e.target.value ? e.target.value.split("|") : [];
+              setTargetClientId(clientId);
+              setTargetBusinessId(bizId);
+              const b = businesses.find((x) => x._id === bizId);
               if (b?.city) setSelectedLocation(b.city);
               if (file) {
-                runPreview(file, Object.keys(mapping).length ? mapping : null, { targetBusinessId: newBizId });
+                runPreview(file, Object.keys(mapping).length ? mapping : null, { targetBusinessId: bizId, targetClientId: clientId });
               }
             }}
           >
             <option value="">Detect from file's Business column</option>
-            {filteredBusinesses.map((b) => (
-              <option key={b._id} value={b._id}>
-                {b.name} ({b.city})
-                {b.clientAccount ? ` → ${b.clientAccount.companyName || b.clientAccount.name}` : " (no client portal)"}
-              </option>
-            ))}
+            {targets?.clients?.length > 0 && (
+              <optgroup label="Client portals">
+                {targets.clients.map((c) =>
+                  c.businesses.length > 1 ? (
+                    c.businesses
+                      .filter((b) => !selectedLocation || b.city?.toLowerCase() === selectedLocation.toLowerCase() || targetBusinessId === b._id)
+                      .map((b) => (
+                        <option key={`${c._id}-${b._id}`} value={`c|${c._id}|${b._id}`}>
+                          {c.name}
+                          {c.clientId ? ` (${c.clientId})` : ""} — {b.name}, {b.city}
+                          {b.nameMatchesClient ? "" : " ⚠ check link"}
+                        </option>
+                      ))
+                  ) : (
+                    // one or no business: the client itself is the target (its client ID)
+                    <option key={c._id} value={`c|${c._id}|${c.businesses[0]?._id || ""}`}>
+                      {c.name}
+                      {c.clientId ? ` (${c.clientId})` : ""}
+                      {c.businesses[0] && !c.businesses[0].nameMatchesClient ? ` — ${c.businesses[0].name} ⚠ check link` : ""}
+                    </option>
+                  )
+                )}
+              </optgroup>
+            )}
+            {targets?.unlinkedBusinesses?.length > 0 && (
+              <optgroup label="Businesses without a client portal">
+                {targets.unlinkedBusinesses
+                  .filter((b) => !selectedLocation || b.city?.toLowerCase() === selectedLocation.toLowerCase())
+                  .map((b) => (
+                    <option key={b._id} value={`b||${b._id}`}>
+                      {b.name} ({b.city}) — no client portal
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+            {!targets &&
+              filteredBusinesses.map((b) => (
+                <option key={b._id} value={`b||${b._id}`}>
+                  {b.name} ({b.city})
+                </option>
+              ))}
           </select>
         </label>
 
@@ -313,6 +415,7 @@ export default function ExcelUploadModal({ isOpen, onClose, onSuccess, userScope
                 const cur = businesses.find((b) => b._id === targetBusinessId);
                 if (cur && e.target.value && cur.city?.toLowerCase() !== e.target.value.toLowerCase()) {
                   setTargetBusinessId("");
+                  setTargetClientId("");
                 }
               }
             }}
@@ -424,8 +527,13 @@ export default function ExcelUploadModal({ isOpen, onClose, onSuccess, userScope
         )}
       </div>
 
+      {targetsError && <p className="text-[11px] text-red-700">{targetsError}</p>}
+      {renderClientTargetNotes()}
+
       <p className="text-[11px] text-gray-500">
-        {selectedTarget
+        {selectedClientTarget
+          ? `All rows will be saved under ${selectedClientTarget.name}'s client ID${selectedClientTarget.clientId ? ` ${selectedClientTarget.clientId}` : ""} and appear only in that client's portal, dashboard and monthly analytics.`
+          : selectedTarget
           ? selectedTarget.clientAccount
             ? `All rows will be saved for ${selectedTarget.name} (${selectedTarget.city}) and automatically synchronized with ${selectedTarget.clientAccount.companyName || selectedTarget.clientAccount.name}'s client portal.`
             : `${selectedTarget.name} is not linked to a client portal account yet — saved for managers, but no client will see it until linked.`

@@ -63,6 +63,7 @@ function buildEntryDocs(rows, { importJobId, user, sourceFormat = "generic" }) {
 function entryDoc(d, { kind, transactionId = null, rows, importJobId, user, sourceFormat }) {
   return {
     business: d.businessId,
+    client: d.clientId || null,
     businessName: d.businessName,
     city: d.city || "",
     state: d.state || "",
@@ -176,6 +177,7 @@ async function refreshRollups(keys, { user, session = null } = {}) {
     const any = included[0];
     const fields = {
       business: biz,
+      client: (entries.find((e) => e.client) || {}).client || null,
       businessName: any.businessName,
       state: (entries[0] && entries[0].state) || "",
       city: any.city || (entries[0] && entries[0].city) || "",

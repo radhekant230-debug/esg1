@@ -23,6 +23,8 @@ const SalesEntry = require("../models/sales/SalesEntry");
 const restaurantReport = require("../services/sales/reportParsers/restaurantDayWise");
 const entryImport = require("../services/sales/entryImport");
 const P = require("../services/sales/periods");
+const User = require("../models/User");
+const importTargets = require("../services/sales/importTargets");
 
 const PREVIEW_TTL_MS = 2 * 60 * 60 * 1000;
 const RECORD_FIELDS = [
@@ -50,7 +52,13 @@ const fail = (status, message, extra = {}) => Object.assign(new Error(message), 
 const respondError = (res, err, fallback) => {
   if (err && err.status) return res.status(err.status).json({ message: err.message, ...(err.details || {}) });
   console.error(fallback, err);
-  return res.status(500).json({ message: fallback });
+  // say what went wrong (no stack traces, connection strings or file paths)
+  const reason = String((err && err.message) || "")
+    .replace(/mongodb(\+srv)?:\/\/\S+/gi, "<database>")
+    .replace(/[A-Za-z]:\\[^\s]+|\/[\w./-]+\.js/g, "")
+    .slice(0, 200)
+    .trim();
+  return res.status(500).json({ message: reason ? `${fallback} Reason: ${reason}` : fallback });
 };
 
 async function authorizedBusinessIds(user) {
@@ -301,6 +309,8 @@ async function previewRestaurantReport({ req, kind, report, businesses, authoriz
     sheets: [{ sheetName: report.sheetName, headerRow: report.headerRow, rows: validRows.length + invalidRows.length }],
     columnMapping: report.columns,
     targetBusiness: targetBusiness ? targetBusiness._id : null,
+    targetClient: req.importTargetClient || null,
+    pendingLedger: req.importPendingLedger || null,
     reportFormat: report.format,
     reportMeta,
     reportPeriod: period,
@@ -550,6 +560,26 @@ exports.previewSalesExcel = async (req, res) => {
       }
     }
 
+    // Client chosen in the form (its User _id). No sales business is required:
+    // - the client's linked business is used when it has exactly one,
+    // - otherwise its own sales ledger is used (created at commit if missing).
+    if (body.targetClientId) {
+      if (!mongoose.Types.ObjectId.isValid(body.targetClientId)) throw fail(400, "Invalid target client.");
+      const [client] = await visibleClients(req.user, { _id: body.targetClientId });
+      if (!client) throw fail(403, "You are not authorized to import sales for this client.");
+      if (targetBusiness) {
+        const problem = importTargets.checkTargetForClient(targetBusiness, body.targetClientId);
+        if (problem) throw fail(400, problem);
+      } else {
+        const resolved = await resolveClientTarget(req.user, client, authorizedIds);
+        targetBusiness = resolved.business;
+        req.importPendingLedger = resolved.pendingLedger;
+        // the client is authorized above; its new ledger is not in the DB yet
+        if (resolved.pendingLedger && authorizedIds) authorizedIds.add(String(resolved.business._id));
+      }
+      req.importTargetClient = client._id;
+    }
+
     const reportingPeriod = body.reportingPeriod || "auto";
     const startDate = body.startDate ? String(body.startDate).trim() : null;
     const endDate = body.endDate ? String(body.endDate).trim() : null;
@@ -564,6 +594,9 @@ exports.previewSalesExcel = async (req, res) => {
     }
 
     const businesses = await SalesBusiness.find({}).select("name code city state category monthlyTarget clientAccount").lean();
+    // The client's sales ledger is created only when the import is confirmed; until then the
+    // preview must know it as a business, or every lookup by business ID fails.
+    if (targetBusiness && !businesses.some((b) => String(b._id) === String(targetBusiness._id))) businesses.push(targetBusiness);
 
     // Restaurant POS day-wise reports (e.g. Petpooja "All Restaurant Report -
     // Day Wise"): metadata lines, header further down, forward-filled restaurant
@@ -656,7 +689,7 @@ exports.previewSalesExcel = async (req, res) => {
     const clients = await User.find({ _id: { $in: clientIds } }).select("name companyName").lean();
     const clientById = new Map(clients.map((c) => [String(c._id), c]));
     const portalTargets = bizIds.map((id) => {
-      const b = bizById.get(id);
+      const b = bizById.get(id) || { name: "Unknown business", city: "", clientAccount: null };
       const c = b.clientAccount ? clientById.get(String(b.clientAccount)) : null;
       return {
         businessId: id,
@@ -714,6 +747,8 @@ exports.previewSalesExcel = async (req, res) => {
       columnMapping: columnInfo.mapping,
       unmappedColumns: columnInfo.unmappedColumns,
       targetBusiness: targetBusiness ? targetBusiness._id : null,
+      targetClient: req.importTargetClient || null,
+      pendingLedger: req.importPendingLedger || null,
       defaultPeriod: defaultPeriod ? { month: defaultPeriod.month, year: defaultPeriod.year } : { month: null, year: null },
       reportingPeriod: (detectedPeriod && detectedPeriod.periodType) || reportingPeriod || "custom",
       reportingPeriodLabel: (detectedPeriod && detectedPeriod.periodLabel) || "",
@@ -840,14 +875,42 @@ exports.commitSalesExcel = async (req, res) => {
       );
     }
 
+    // Client had no sales business: create its sales ledger now (idempotent: same _id as in the preview)
+    if (claimed.pendingLedger && claimed.targetClient) {
+      await ensureClientLedger(claimed.pendingLedger, claimed.targetClient, req.user);
+    }
     // Re-check authorization at commit time (assignments may have changed).
     const authorizedIds = req.user.role === "admin" ? null : await authorizedBusinessIds(req.user);
+    if (authorizedIds && claimed.targetClient) {
+      // the client's own ledger is authorized through the client (assigned to this manager)
+      const [client] = await visibleClients(req.user, { _id: claimed.targetClient });
+      const ledger = client && (await SalesBusiness.findOne({ clientAccount: client._id, isClientLedger: true }).select("_id").lean());
+      if (ledger) authorizedIds.add(String(ledger._id));
+    }
     const rows = claimed.validRows || [];
     const lateRejected = [];
     const toWrite = [];
+    // Imports started for a client portal only write to businesses still linked to that client ID
+    let clientOf = null;
+    if (claimed.targetClient) {
+      const ids = [...new Set(rows.map((r) => String(r.data.businessId)))];
+      const bizs = await SalesBusiness.find({ _id: { $in: ids } }).select("clientAccount").lean();
+      clientOf = new Map(bizs.map((b) => [String(b._id), String(b.clientAccount || "")]));
+    }
+    // every saved row carries the client ID of its business (direct client association)
+    {
+      const ids = [...new Set(rows.map((r) => String(r.data.businessId)))];
+      const owners = await SalesBusiness.find({ _id: { $in: ids } }).select("clientAccount").lean();
+      const ownerOf = new Map(owners.map((b) => [String(b._id), b.clientAccount ? String(b.clientAccount) : null]));
+      rows.forEach((r) => {
+        r.data.clientId = ownerOf.get(String(r.data.businessId)) || null;
+      });
+    }
     rows.forEach((r) => {
       if (authorizedIds && !authorizedIds.has(String(r.data.businessId))) {
         lateRejected.push({ ...r, errors: ["You are no longer authorized for this business."] });
+      } else if (clientOf && clientOf.get(String(r.data.businessId)) !== String(claimed.targetClient)) {
+        lateRejected.push({ ...r, errors: ["This business is not linked to the selected client portal."] });
       } else toWrite.push(r);
     });
     if (claimed.reportFormat) return await commitReportJob(req, res, claimed, toWrite, lateRejected, duplicateMode);
@@ -937,6 +1000,7 @@ exports.commitSalesExcel = async (req, res) => {
               [
                 {
                   business: d.businessId,
+                  client: d.clientId || null,
                   businessName: d.businessName,
                   category: d.category,
                   state: d.state,
@@ -1244,3 +1308,86 @@ exports.expireStalePreviews = async (now = new Date()) => {
   }
   return stale.length;
 };
+
+
+// ===================== Import targets (client portal ↔ business) =====================
+
+/** Active clients this user may import for: admins all; managers their assigned clients and clients of their authorized businesses. */
+async function visibleClients(user, extra = {}) {
+  const base = { role: "client", isActive: { $ne: false }, ...extra };
+  if (user.role === "admin") return User.find(base).select("_id name companyName email clientId assignedManager").lean();
+  const authFilter = await getManagerAuthorizedBusinessQuery(user);
+  const linkedIds = await SalesBusiness.find({ ...authFilter, clientAccount: { $ne: null } }).distinct("clientAccount");
+  return User.find({ ...base, $or: [{ assignedManager: user._id }, { _id: { $in: linkedIds } }] }).select("_id name companyName email clientId assignedManager").lean();
+}
+
+/** GET /sales/import-targets — always read fresh from the database (no caching). */
+exports.getImportTargets = async (req, res) => {
+  try {
+    const authFilter = await getManagerAuthorizedBusinessQuery(req.user);
+    const [clients, businesses] = await Promise.all([
+      visibleClients(req.user),
+      SalesBusiness.find({ ...authFilter, isActive: { $ne: false } }).select("name code city state clientAccount isClientLedger").sort({ name: 1 }).lean(),
+    ]);
+    res.set("Cache-Control", "no-store");
+    return res.json({ ...importTargets.buildImportTargets({ clients, businesses }), canCreate: req.user.role === "admin" || req.user.role === "manager" });
+  } catch (error) {
+    console.error("Import targets error:", error.message);
+    return res.status(500).json({ message: "Could not load clients and businesses." });
+  }
+};
+
+/**
+ * Where a client's imported sales are stored when no business is chosen:
+ * its single linked business, an existing client ledger, or a new ledger
+ * (allocated now, created only when the import is confirmed).
+ */
+async function resolveClientTarget(user, client, authorizedIds) {
+  const fields = "name code city state category monthlyTarget clientAccount isClientLedger";
+  const linked = await SalesBusiness.find({ clientAccount: client._id, isActive: { $ne: false } }).select(fields).lean();
+  const usable = authorizedIds ? linked.filter((b) => authorizedIds.has(String(b._id))) : linked;
+  const ledger = usable.find((b) => b.isClientLedger);
+  if (ledger) return { business: ledger, pendingLedger: null };
+  if (usable.length === 1) return { business: usable[0], pendingLedger: null };
+  if (usable.length > 1) throw fail(400, `${client.companyName || client.name} has several businesses. Choose which one to import into.`);
+  if (linked.length) throw fail(403, `You are not authorized for ${client.companyName || client.name}'s business location.`);
+
+  // New ledger: location from the importing manager (or the client's manager for admins)
+  let loc = user;
+  if (user.role === "admin" && client.assignedManager) loc = (await User.findById(client.assignedManager).select("assignedCity assignedState").lean()) || {};
+  else if (user.role !== "admin") loc = (await User.findById(user._id).select("assignedCity assignedState").lean()) || {};
+  const city = (loc.assignedCity || "").trim() || "Unassigned";
+  const state = (loc.assignedState || "").trim() || "Unassigned";
+  const _id = new mongoose.Types.ObjectId();
+  const name = client.companyName || client.name;
+  const pendingLedger = { _id: String(_id), name, city, state, category: "Restaurant", assignedManager: user.role === "manager" ? String(user._id) : client.assignedManager ? String(client.assignedManager) : null };
+  return { business: { _id, name, code: "", city, state, category: "Restaurant", monthlyTarget: 0, clientAccount: client._id, isClientLedger: true }, pendingLedger };
+}
+
+async function ensureClientLedger(p, clientId, actor) {
+  const exists = await SalesBusiness.findById(p._id).select("_id clientAccount").lean();
+  if (exists) {
+    if (String(exists.clientAccount) !== String(clientId)) throw fail(409, "The client's sales ledger changed. Please preview the file again.");
+    return;
+  }
+  const prefix = `BIZ-${String(p.state).slice(0, 2).toUpperCase()}-${String(p.city).slice(0, 3).toUpperCase()}`;
+  let code = "";
+  for (let i = 0; i < 5 && !code; i++) {
+    const c = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await SalesBusiness.exists({ code: c }))) code = c;
+  }
+  await SalesBusiness.create({
+    _id: p._id,
+    name: p.name,
+    code: code || `${prefix}-${String(p._id).slice(-6).toUpperCase()}`,
+    category: p.category || "Restaurant",
+    city: p.city,
+    state: p.state,
+    clientAccount: clientId,
+    isClientLedger: true,
+    assignedManager: p.assignedManager || null,
+    createdBy: actor._id,
+  });
+  await audit({ entityType: "SalesBusiness", entityId: p._id, action: "CLIENT_LEDGER_CREATED", actor, after: { name: p.name, city: p.city, state: p.state, clientAccount: clientId }, metadata: { via: "sales-import" } });
+}

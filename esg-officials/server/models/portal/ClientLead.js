@@ -64,6 +64,17 @@ const clientLeadSchema = new Schema(
       type: Number,
       default: 0,
     },
+    // Actual visit/spend figures for this customer from a POS customer-list
+    // import (lifetime totals as reported by the export; null = not reported).
+    // Never derived from estimatedValue.
+    customerStats: {
+      visits: { type: Number, default: null },
+      totalSpent: { type: Number, default: null },
+      avgSpend: { type: Number, default: null },
+      lastVisitAt: { type: Date, default: null },
+      source: { type: String, default: "" },
+      updatedAt: { type: Date, default: null },
+    },
     notes: [
       {
         text: { type: String, required: true },
@@ -76,5 +87,8 @@ const clientLeadSchema = new Schema(
     timestamps: true,
   }
 );
+
+clientLeadSchema.index({ client: 1, phone: 1 });
+clientLeadSchema.index({ client: 1, enquiryDate: -1 });
 
 module.exports = mongoose.model("ClientLead", clientLeadSchema);

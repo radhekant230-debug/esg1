@@ -24,7 +24,32 @@ const emptyForm = () => ({ name: "", phone: "", email: "", source: "Meta Ads", c
 const PAGE_SIZE = 100;
 const FILTER_STATUS = { ALL: "", NEW: "New", CONTACTED: "Contacted", QUALIFIED: "Qualified", CONVERTED: "Converted", LOST: "Lost" };
 
-export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "" }) {
+const UNAVAILABLE = <span className="font-sans text-[10px] text-stone-400" title="No visit or transaction records for this customer">Data unavailable</span>;
+const shortDate = (d) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "2-digit" });
+
+/** Customer columns: actual visits, enquiries, spending, last visit, New/Returning. */
+function CustomerCells({ c }) {
+  const scope = c?.scope === "lifetime" ? "Lifetime total from the imported customer list" : c?.dataSource === "POS sales" ? "From POS sales records" : "";
+  return (
+    <>
+      <td className="py-3 px-3 text-right font-mono text-stone-800" title={scope}>{c && c.visits != null ? c.visits.toLocaleString("en-IN") : UNAVAILABLE}</td>
+      <td className="py-3 px-3 text-right font-mono text-stone-800">{c ? c.enquiries.toLocaleString("en-IN") : "—"}</td>
+      <td className="py-3 px-3 text-right font-mono font-semibold text-stone-800" title={scope}>{c && c.spent != null ? inr(c.spent) : UNAVAILABLE}</td>
+      <td className="py-3 px-3 font-mono text-[11px] text-stone-500">{c && c.lastVisit ? shortDate(c.lastVisit) : UNAVAILABLE}</td>
+      <td className="py-3 px-3">
+        {c && c.type ? (
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${c.type === "Returning" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-sky-50 text-sky-800 border-sky-200"}`}>{c.type}</span>
+        ) : (
+          UNAVAILABLE
+        )}
+      </td>
+    </>
+  );
+}
+
+export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "", customerParams = null }) {
+  // Customer Insights (one row per customer) when set; otherwise one row per enquiry
+  const custKey = customerParams ? JSON.stringify(customerParams) : "";
   const canEdit = true; // clients (own enquiries), assigned managers and admins; the server enforces ownership
   // The list is paged/filtered on the server (customer imports can hold thousands of rows)
   const [data, setData] = useState(leadsData || null);
@@ -57,20 +82,40 @@ export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "" }
       setLoadingList(true);
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (clientId) params.set("clientId", clientId);
+      const adv = custKey ? JSON.parse(custKey) : {};
+      Object.entries(adv).forEach(([k, v]) => {
+        if (v !== "" && v != null && k !== "status") params.set(k, String(v));
+      });
+      // a status button wins; otherwise the customer status filter applies
       if (FILTER_STATUS[activeFilter]) params.set("status", FILTER_STATUS[activeFilter]);
+      else if (adv.status) params.set("status", adv.status);
       if (query) params.set("q", query);
-      const res = await api.get(`/portal/leads?${params.toString()}`);
-      if (id === reqId.current) setData(res.data);
+      const res = await api.get(`/portal/leads${custKey ? "/customers" : ""}?${params.toString()}`);
+      // the customer view has no per-status counts: keep the ones already shown
+      if (id === reqId.current)
+        setData((prev) => ({ ...res.data, counts: res.data.counts || prev?.counts, values: res.data.values ?? prev?.values, options: res.data.options || prev?.options }));
     } catch (err) {
       if (id === reqId.current) setError(err.response?.data?.message || "Could not load enquiries.");
     } finally {
       if (id === reqId.current) setLoadingList(false);
     }
-  }, [clientId, activeFilter, query, page]);
+  }, [clientId, activeFilter, query, page, custKey]);
 
+  // the first page arrives with leadsData; fetch again only when filters/page change
+  // (only when that data is known to belong to this client, e.g. Manager Portal's tagged data)
+  const skipFirst = useRef(Boolean(leadsData && leadsData._for && String(leadsData._for) === String(clientId)) && !customerParams);
   useEffect(() => {
+    if (skipFirst.current) {
+      skipFirst.current = false;
+      return;
+    }
     reload();
   }, [reload]);
+
+  // new customer filters start again at page 1
+  useEffect(() => {
+    setPage(1);
+  }, [custKey]);
 
   // debounce the search box
   useEffect(() => {
@@ -347,6 +392,11 @@ export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "" }
             <thead>
               <tr className="bg-[#FAF7F2] text-stone-600 font-semibold border-b border-[#E7DFD5] uppercase tracking-wider text-[11px]">
                 <th className="py-3 px-4">Customer Name & Contact</th>
+                <th className="py-3 px-3 text-right">Total Visits</th>
+                <th className="py-3 px-3 text-right">Total Enquiries</th>
+                <th className="py-3 px-3 text-right">Total Actual Spending</th>
+                <th className="py-3 px-3">Last Visit</th>
+                <th className="py-3 px-3">Customer Type</th>
                 <th className="py-3 px-3">Acquisition Source</th>
                 <th className="py-3 px-3">Date</th>
                 <th className="py-3 px-3">Est. Value</th>
@@ -373,10 +423,16 @@ export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "" }
                     </div>
                   </td>
 
+                  <CustomerCells c={lead.customer} />
+
                   <td className="py-3 px-3">
-                    <span className="font-medium text-stone-700 bg-stone-100 px-2 py-0.5 rounded text-[11px]">
-                      {lead.source}
-                    </span>
+                    {lead.source ? (
+                      <span className="font-medium text-stone-700 bg-stone-100 px-2 py-0.5 rounded text-[11px]">
+                        {lead.source}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-stone-400">POS customer</span>
+                    )}
                     {lead.campaign && (
                       <div className="text-[10px] text-stone-400 mt-0.5 truncate max-w-[140px]">
                         {lead.campaign}
@@ -385,10 +441,12 @@ export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "" }
                   </td>
 
                   <td className="py-3 px-3 text-stone-500 font-mono text-[11px]">
-                    {new Date(lead.enquiryDate).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "short",
-                    })}
+                    {lead.enquiryDate
+                      ? new Date(lead.enquiryDate).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                        })
+                      : "—"}
                   </td>
 
                   <td className="py-3 px-3 font-mono font-semibold text-stone-800">
@@ -396,6 +454,9 @@ export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "" }
                   </td>
 
                   <td className="py-3 px-3">
+                    {lead.noEnquiry ? (
+                      <span className="text-[11px] text-stone-400">No enquiry</span>
+                    ) : (
                     <select
                       value={lead.status}
                       disabled={isUpdating}
@@ -408,9 +469,14 @@ export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "" }
                         <option key={st} value={st}>{st}</option>
                       ))}
                     </select>
+                    )}
                   </td>
 
                   <td className="py-3 px-4 text-right whitespace-nowrap">
+                    {lead.noEnquiry ? (
+                      <span className="text-[11px] text-stone-400" title="Known from POS sales only — add an enquiry to track them here">—</span>
+                    ) : (
+                    <>
                     {canEdit && (
                       <button
                         type="button"
@@ -429,12 +495,14 @@ export default function LeadsPipelineTab({ leadsData, onRefresh, clientId = "" }
                       <FaCommentDots className="w-3 h-3 text-[#9C7A42]" />
                       Notes ({lead.notes?.length || 0})
                     </button>
+                    </>
+                    )}
                   </td>
                 </tr>
               ))}
               {filteredLeads.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-8 px-4 text-center text-xs text-stone-500">
+                  <td colSpan={11} className="py-8 px-4 text-center text-xs text-stone-500">
                     {counts.total ? "No enquiries match this filter." : "No enquiries recorded yet."}
                     {canEdit && !counts.total && (
                       <button type="button" onClick={() => openForm("new")} className="ml-2 underline font-semibold text-stone-800 cursor-pointer">
