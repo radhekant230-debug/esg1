@@ -10,12 +10,18 @@ async function ensureManagerAccount() {
   const managerEmail = process.env.MANAGER_EMAIL
     ? process.env.MANAGER_EMAIL.trim().toLowerCase()
     : "rahul.manager@esgofficial.com";
-  const managerPassword = process.env.MANAGER_PASSWORD || "password123";
+  // No built-in default password: without MANAGER_PASSWORD the bootstrap only
+  // checks an existing manager's role/status and never creates or resets one.
+  const managerPassword = process.env.MANAGER_PASSWORD || "";
   const managerName = process.env.MANAGER_NAME ? process.env.MANAGER_NAME.trim() : "Rahul Sharma";
 
   try {
     const existingManager = await User.findOne({ email: managerEmail });
 
+    if (!existingManager && !managerPassword) {
+      console.warn(`[managerBootstrap] No manager account for ${managerEmail} and MANAGER_PASSWORD is not set; nothing created.`);
+      return;
+    }
     if (!existingManager) {
       const hashedPassword = await bcrypt.hash(managerPassword, 10);
       await User.create({
@@ -45,7 +51,10 @@ async function ensureManagerAccount() {
       }
 
       // If SYNC_MANAGER_PASSWORD=true is set in env, synchronize password
-      if (process.env.SYNC_MANAGER_PASSWORD === "true") {
+      if (process.env.SYNC_MANAGER_PASSWORD === "true" && !managerPassword) {
+        console.warn("[managerBootstrap] SYNC_MANAGER_PASSWORD=true ignored: MANAGER_PASSWORD is not set.");
+      }
+      if (process.env.SYNC_MANAGER_PASSWORD === "true" && managerPassword) {
         existingManager.password = await bcrypt.hash(managerPassword, 10);
         needsSave = true;
         console.log(`[managerBootstrap] Manager password synchronized from environment for: ${managerEmail}`);

@@ -6,6 +6,9 @@ const { otpConfig } = require("../utils/otpConfig");
 const { sendOTPEmail } = require("../utils/email");
 const jwt = require("jsonwebtoken");
 
+// bcrypt hash of a random value, used to equalize timing for unknown accounts
+const DUMMY_HASH = bcrypt.hashSync(require("crypto").randomBytes(16).toString("hex"), 10);
+
 // ==========================================
 // GENERATE JWT TOKEN
 // ==========================================
@@ -154,36 +157,10 @@ exports.loginUser = async (req, res) => {
     const user = await User.findOne(loginQuery);
 
     if (!user) {
+      // same work as a real check, so response time does not reveal unknown accounts
+      await bcrypt.compare(String(password), DUMMY_HASH);
       return res.status(401).json({
         message: "Invalid credentials",
-      });
-    }
-
-    // Portal-specific role enforcement
-    if (portal) {
-      const requestedPortal = String(portal).toLowerCase().trim();
-      if (requestedPortal === "admin" && user.role !== "admin") {
-        return res.status(403).json({
-          message: "Access denied: This login is reserved for ESG Administrators only.",
-        });
-      }
-      if (requestedPortal === "manager" && user.role !== "manager" && user.role !== "admin") {
-        return res.status(403).json({
-          message: "Access denied: This login is reserved for Account Managers only.",
-        });
-      }
-      if (requestedPortal === "client" && user.role !== "client") {
-        return res.status(403).json({
-          message: "Access denied: This login is reserved for Clients only.",
-        });
-      }
-    }
-
-    // Check whether account is active
-    if (!user.isActive) {
-      return res.status(403).json({
-        message:
-          "Your account has been disabled. Please contact the administrator.",
       });
     }
 
@@ -218,6 +195,38 @@ exports.loginUser = async (req, res) => {
         message: "Invalid credentials",
       });
     }
+
+    // Portal and account-status checks run only AFTER the password is verified,
+    // so a wrong password never reveals whether an account exists, its role or
+    // whether it is disabled (all failures before this point are the same 401).
+    // Portal-specific role enforcement
+    if (portal) {
+      const requestedPortal = String(portal).toLowerCase().trim();
+      if (requestedPortal === "admin" && user.role !== "admin") {
+        return res.status(403).json({
+          message: "Access denied: This login is reserved for ESG Administrators only.",
+        });
+      }
+      if (requestedPortal === "manager" && user.role !== "manager" && user.role !== "admin") {
+        return res.status(403).json({
+          message: "Access denied: This login is reserved for Account Managers only.",
+        });
+      }
+      if (requestedPortal === "client" && user.role !== "client") {
+        return res.status(403).json({
+          message: "Access denied: This login is reserved for Clients only.",
+        });
+      }
+    }
+
+    // Check whether account is active
+    if (!user.isActive) {
+      return res.status(403).json({
+        message:
+          "Your account has been disabled. Please contact the administrator.",
+      });
+    }
+
 
     // ==========================================
     // CLIENT EMAIL VERIFICATION
